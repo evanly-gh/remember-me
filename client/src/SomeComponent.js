@@ -1,7 +1,8 @@
+import React from 'react';
 import { Text, StyleSheet } from "react-native"; // Here we are using the React Library
 
 // By using export, you can import and use this component in your app!
-export default SomeComponent = () => {
+export default function SomeComponent() {
   let number = 100;
 
   // This is what we want the component to return.
