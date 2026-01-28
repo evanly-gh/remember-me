@@ -29,8 +29,26 @@ export default function RecordScreen() {
 
   const takePicture = async () => {
     if (cameraRef.current) {
-      const photo = await cameraRef.current.takePictureAsync();
+      const photo = await cameraRef.current.takePictureAsync({
+        base64: true,
+      });
       setCapturedPhoto(photo.uri);
+      analyzeFace(photo.base64);
+    }
+  };
+
+  const analyzeFace = async (base64Image) => {
+    try {
+      await fetch(process.env.EXPO_PUBLIC_FACE_ANALYSIS_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: JSON.stringify({ image: base64Image }),
+      });
+    } catch (error) {
+      console.error('Analysis failed:', error);
     }
   };
 
@@ -120,6 +138,28 @@ export default function RecordScreen() {
       <View style={styles.container}>
         <View style={styles.previewContainer}>
           <Image source={{ uri: capturedPhoto }} style={styles.previewImage} />
+          
+          {isAnalyzing && (
+            <View style={styles.analysisOverlay}>
+              <Text style={styles.analysisText}>Analyzing face...</Text>
+            </View>
+          )}
+
+          {analysis && analysis.available && (
+            <View style={styles.analysisOverlay}>
+              <Text style={styles.analysisText}>
+                {analysis.face_count > 0 
+                  ? `Detected ${analysis.face_count} face(s)` 
+                  : 'No faces detected'}
+              </Text>
+              {analysis.faces && analysis.faces.map((face, i) => (
+                <Text key={i} style={styles.analysisSubtext}>
+                  Face {i+1}: {face.primary_emotion} {face.smiling ? '😊' : ''}
+                </Text>
+              ))}
+            </View>
+          )}
+
           <View style={styles.inputContainer}>
             <TextInput
               style={styles.textInput}
