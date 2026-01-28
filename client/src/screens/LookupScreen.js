@@ -10,7 +10,7 @@ const FAKE_PEOPLE = [
   },
   {
     id: 2,
-    name: 'John Smith',
+    name: 'Jane Doe',
     description: 'Software engineer at Tech Corp, loves hiking and photography',
   },
   {
@@ -20,12 +20,12 @@ const FAKE_PEOPLE = [
   },
   {
     id: 4,
-    name: 'John Smith',
+    name: 'John Jims',
     description: 'Software engineer at Tech Corp, loves hiking and photography',
   },
   {
     id: 5,
-    name: 'John Smith',
+    name: 'Barry Smith',
     description: 'Software engineer at Tech Corp, loves hiking and photography',
   },
   {
@@ -35,7 +35,7 @@ const FAKE_PEOPLE = [
   },
   {
     id: 7,
-    name: 'John Smith',
+    name: 'John Huckle',
     description: 'Software engineer at Tech Corp, loves hiking and photography',
   },
   {
