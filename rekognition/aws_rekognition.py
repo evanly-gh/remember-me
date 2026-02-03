@@ -48,8 +48,6 @@ class RekognitionAnalyzer:
                 Image={'Bytes': base64.b64decode(base64_image)},
                 Attributes=['ALL']
             )
-            
-            print(response)
 
             faces = response['FaceDetails']
             face_summaries = []
