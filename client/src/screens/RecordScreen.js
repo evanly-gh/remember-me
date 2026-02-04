@@ -77,7 +77,6 @@ export default function RecordScreen() {
     if (cameraRef.current) {
       const photo = await cameraRef.current.takePictureAsync({
         base64: true,
-        quality: 0.6, // Compress to 60% quality to stay under Rekognition 5MB limit
       });
       setCapturedPhoto(photo.uri);
       // Run face analysis asynchronously (won't block UI)
@@ -232,11 +231,11 @@ export default function RecordScreen() {
                   ? `Detected ${analysis.face_count} face(s)` 
                   : 'No faces detected'}
               </Text>
-              {analysis.faces && analysis.faces.map((face, i) => (
+              {/* {analysis.faces && analysis.faces.map((face, i) => (
                 <Text key={i} style={styles.analysisSubtext}>
                   Face {i+1}: {face.primary_emotion} {face.smiling ? '😊' : ''}
                 </Text>
-              ))}
+              ))} */}
             </View>
           )}
 

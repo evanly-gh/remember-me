@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { SafeAreaView, View, TextInput, StyleSheet, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator, Platform, StatusBar } from 'react-native';
+import { View, TextInput, StyleSheet, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 // Added: Supabase client for querying profiles from database
 import { supabase } from '../lib/supabase';
@@ -67,10 +68,78 @@ export default function LookupScreen({ navigation }) {
     }
   };
 
-  // Added: Filter profiles based on search query (searches by name)
-  const filteredProfiles = profiles.filter(profile =>
-    profile.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Added: Enhanced filter that searches by name AND facial attributes
+  const filteredProfiles = profiles.filter(profile => {
+    const query = searchQuery.toLowerCase();
+    
+    // Always match by name
+    if (profile.name.toLowerCase().includes(query)) {
+      return true;
+    }
+    
+    // Search in facial_details for attributes
+    if (profile.facial_details) {
+      try {
+        const details = typeof profile.facial_details === 'string' 
+          ? JSON.parse(profile.facial_details) 
+          : profile.facial_details;
+        
+        if (details && details.available && details.faces) {
+          // Search across all faces in the profile
+          return details.faces.some(face => {
+            // Match "smiling" or "smile"
+            if ((query.includes('smil') || query.includes('happy')) && face.smiling) {
+              return true;
+            }
+            // Match "beard"
+            if (query.includes('beard') && face.has_beard) {
+              return true;
+            }
+            // Match emotions (e.g., "happy", "sad", "calm", "angry")
+            if (face.primary_emotion && face.primary_emotion.toLowerCase().includes(query)) {
+              return true;
+            }
+            // Match "glasses" or "eyeglasses"
+            if (query.includes('glass') && face.eyeglasses) {
+              return true;
+            }
+            // Match gender if available
+            if (face.gender && face.gender.toLowerCase().includes(query)) {
+              return true;
+            }
+            return false;
+          });
+        }
+      } catch (error) {
+        console.error('Error parsing facial_details:', error);
+      }
+    }
+    
+    return false;
+  });
+
+  // Sort filtered profiles by relevance if searching facial attributes
+  // Profiles with higher confidence scores appear first
+  if (searchQuery.trim()) {
+    filteredProfiles.sort((a, b) => {
+      const getRelevanceScore = (profile) => {
+        try {
+          const details = typeof profile.facial_details === 'string' 
+            ? JSON.parse(profile.facial_details) 
+            : profile.facial_details;
+          
+          if (!details || !details.faces) return 0;
+          
+          // Return highest confidence among matching faces
+          return Math.max(...details.faces.map(face => face.confidence || 0));
+        } catch {
+          return 0;
+        }
+      };
+      
+      return getRelevanceScore(b) - getRelevanceScore(a);
+    });
+  }
 
   // Added: Parse facial_details JSON and extract gender and age_range for display
   const getFacialDetails = (facialDetails) => {
@@ -146,6 +215,10 @@ export default function LookupScreen({ navigation }) {
                 {/* Added: Profile information section */}
                 <View style={styles.cardContent}>
                   <Text style={styles.cardName}>{profile.name}</Text>
+                  {/* Added: Show title (relationship) if available */}
+                  {profile.title && (
+                    <Text style={styles.cardTitle}>{profile.title}</Text>
+                  )}
                   {/* Added: Show gender and age from facial_details JSON */}
                   {description && (
                     <Text style={styles.cardDescription}>{description}</Text>
@@ -178,7 +251,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#fff',
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0,
   },
   searchContainer: {
     padding: 10,
@@ -230,6 +302,12 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 5,
     color: '#333',
+  },
+  cardTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#007AFF',
+    marginBottom: 5,
   },
   cardDescription: {
     fontSize: 14,

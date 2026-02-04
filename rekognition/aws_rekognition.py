@@ -56,12 +56,20 @@ class RekognitionAnalyzer:
                 smile_data = face.get('Smile', {})
                 beard_data = face.get('Beard', {})
                 emotions = face.get('Emotions', [])
+                eyeglasses_data = face.get('Eyeglasses', {})
+                gender_data = face.get('Gender', {})
+                age_range_data = face.get('AgeRange', {})
                 
                 face_summaries.append({
                     'confidence': face['Confidence'],
                     'smiling': smile_data.get('Value', False),
                     'smile_confidence': smile_data.get('Confidence', 0),
                     'has_beard': beard_data.get('Value', False),
+                    'eyeglasses': eyeglasses_data.get('Value', False),
+                    'eyeglasses_confidence': eyeglasses_data.get('Confidence', 0),
+                    'gender': gender_data.get('Value', 'Unknown'),
+                    'gender_confidence': gender_data.get('Confidence', 0),
+                    'age_range': f"{age_range_data.get('Low', 0)}-{age_range_data.get('High', 0)}" if age_range_data else None,
                     'primary_emotion': emotions[0].get('Type') if emotions else "Unknown",
                     'bounding_box': face['BoundingBox']
                 })

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import {
-  SafeAreaView,
   View,
   TextInput,
   StyleSheet,
@@ -10,10 +9,11 @@ import {
   Image,
   ActivityIndicator,
   Alert,
-  Platform,
-  StatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
 // Added: Supabase client for querying and updating profile records
 import { supabase } from '../lib/supabase';
 // Added: Authentication context to get current user ID
@@ -36,9 +36,12 @@ export default function EditProfileScreen({ route, navigation }) {
 
   // Added: Form state for editable fields
   const [name, setName] = useState(profileName);
+  const [title, setTitle] = useState('');
   const [event, setEvent] = useState('');
   const [location, setLocation] = useState('');
   const [date, setDate] = useState('');
+  // Added: State for settings toggle (show facial details)
+  const [showFacialDetails, setShowFacialDetails] = useState(false);
 
   // Added: Load all records for this profile when component mounts
   useEffect(() => {
@@ -46,6 +49,22 @@ export default function EditProfileScreen({ route, navigation }) {
       loadRecords();
     }
   }, [user, profileName]);
+
+  // Added: Load settings when screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      loadSettings();
+    }, [])
+  );
+
+  const loadSettings = async () => {
+    try {
+      const value = await AsyncStorage.getItem('@hcp:settings:showFacialDetails');
+      setShowFacialDetails(value === 'true');
+    } catch (error) {
+      console.error('Error loading settings:', error);
+    }
+  };
 
   // Added: Fetch all records from Supabase with matching profile name
   const loadRecords = async () => {
@@ -67,6 +86,7 @@ export default function EditProfileScreen({ route, navigation }) {
       if (data && data.length > 0) {
         const mostRecent = data[0];
         setSelectedPhoto(mostRecent);
+        setTitle(mostRecent.title || '');
         setEvent(mostRecent.event || '');
         setLocation(mostRecent.location || '');
         setDate(mostRecent.date || '');
@@ -93,6 +113,7 @@ export default function EditProfileScreen({ route, navigation }) {
         .from('people')
         .update({
           name: name.trim(),
+          title: title.trim() || null,
           event: event.trim() || null,
           location: location.trim() || null,
           date: date || null,
@@ -247,6 +268,16 @@ export default function EditProfileScreen({ route, navigation }) {
         </View>
 
         <View style={styles.formGroup}>
+          <Text style={styles.label}>Title</Text>
+          <TextInput
+            style={styles.input}
+            value={title}
+            onChangeText={setTitle}
+            placeholder="Enter title (e.g., Friend, Colleague)"
+          />
+        </View>
+
+        <View style={styles.formGroup}>
           <Text style={styles.label}>Event</Text>
           <TextInput
             style={styles.input}
@@ -303,6 +334,94 @@ export default function EditProfileScreen({ route, navigation }) {
         )}
       </View>
 
+      {/* Added: Display facial analysis details if enabled in settings */}
+      {showFacialDetails && selectedPhoto?.facial_details && (
+        <View style={styles.facialDetailsSection}>
+          <Text style={styles.sectionTitle}>Facial Analysis</Text>
+          {(() => {
+            try {
+              const details = typeof selectedPhoto.facial_details === 'string' 
+                ? JSON.parse(selectedPhoto.facial_details) 
+                : selectedPhoto.facial_details;
+              
+              if (!details || !details.available) {
+                return (
+                  <View style={styles.recentItem}>
+                    <Text style={styles.recentValue}>
+                      {details?.error || 'No facial analysis data available'}
+                    </Text>
+                  </View>
+                );
+              }
+
+              return (
+                <>
+                  <View style={styles.recentItem}>
+                    <Text style={styles.recentLabel}>Faces Detected:</Text>
+                    <Text style={styles.recentValue}>{details.face_count || 0}</Text>
+                  </View>
+                  {details.faces && details.faces.map((face, index) => (
+                    <View key={index} style={styles.faceDetail}>
+                      <Text style={styles.faceDetailTitle}>Face {index + 1}</Text>
+                      <View style={styles.recentItem}>
+                        <Text style={styles.recentLabel}>Confidence:</Text>
+                        <Text style={styles.recentValue}>{face.confidence?.toFixed(1)}%</Text>
+                      </View>
+                      {face.primary_emotion && (
+                        <View style={styles.recentItem}>
+                          <Text style={styles.recentLabel}>Primary Emotion:</Text>
+                          <Text style={styles.recentValue}>{face.primary_emotion}</Text>
+                        </View>
+                      )}
+                      <View style={styles.recentItem}>
+                        <Text style={styles.recentLabel}>Smiling:</Text>
+                        <Text style={styles.recentValue}>
+                          {face.smiling ? 'Yes' : 'No'} ({face.smile_confidence?.toFixed(1)}%)
+                        </Text>
+                      </View>
+                      {face.has_beard !== undefined && (
+                        <View style={styles.recentItem}>
+                          <Text style={styles.recentLabel}>Beard:</Text>
+                          <Text style={styles.recentValue}>{face.has_beard ? 'Yes' : 'No'}</Text>
+                        </View>
+                      )}
+                      {face.eyeglasses !== undefined && (
+                        <View style={styles.recentItem}>
+                          <Text style={styles.recentLabel}>Eyeglasses:</Text>
+                          <Text style={styles.recentValue}>
+                            {face.eyeglasses ? 'Yes' : 'No'} ({face.eyeglasses_confidence?.toFixed(1)}%)
+                          </Text>
+                        </View>
+                      )}
+                      {face.gender && (
+                        <View style={styles.recentItem}>
+                          <Text style={styles.recentLabel}>Gender:</Text>
+                          <Text style={styles.recentValue}>
+                            {face.gender} ({face.gender_confidence?.toFixed(1)}%)
+                          </Text>
+                        </View>
+                      )}
+                      {face.age_range && (
+                        <View style={styles.recentItem}>
+                          <Text style={styles.recentLabel}>Age Range:</Text>
+                          <Text style={styles.recentValue}>{face.age_range}</Text>
+                        </View>
+                      )}
+                    </View>
+                  ))}
+                </>
+              );
+            } catch (error) {
+              return (
+                <View style={styles.recentItem}>
+                  <Text style={styles.recentValue}>Error parsing facial data</Text>
+                </View>
+              );
+            }
+          })()}
+        </View>
+      )}
+
       {/* Added: Delete button for individual photo records (only shown when multiple photos exist) */}
       {selectedPhoto && records.length > 1 && (
         <View style={styles.deleteSection}>
@@ -331,7 +450,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#f9f9f9',
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0,
   },
   header: {
     flexDirection: 'row',
@@ -448,6 +566,26 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#333',
     lineHeight: 18,
+  },
+  facialDetailsSection: {
+    backgroundColor: '#fff',
+    paddingVertical: 15,
+    marginBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  faceDetail: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  faceDetailTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#007AFF',
+    paddingHorizontal: 15,
+    marginBottom: 8,
   },
   deleteSection: {
     backgroundColor: '#fff',
