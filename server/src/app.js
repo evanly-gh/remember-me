@@ -25,14 +25,18 @@ app.post('/analyze-face', (req, res) => {
   // Remove the data:image/jpeg;base64, prefix if it exists
     const base64Data = image.replace(/^data:image\/\w+;base64,/, '');
 
-    // Determine which python command to use. 
-    // We'll prefer 'python3' but add error handling if it fails.
-    // Force arm64 architecture to match the installed libraries (since Node is x86_64/Rosetta)
-    const pythonProcess = spawn('arch', [
-        '-arm64',
-        'python3',
-        path.join(__dirname, '../../rekognition/cli_wrapper.py')
-    ]);
+        // Determine which python command to use. Prefer a cross-platform approach:
+        // - On macOS we keep the existing 'arch -arm64 python3' behavior (for Apple Silicon compatibility).
+        // - On other platforms (Windows / Linux) spawn 'python' or 'python3' directly.
+        const scriptPath = path.join(__dirname, '../../rekognition/cli_wrapper.py');
+        let pythonProcess;
+        if (process.platform === 'darwin') {
+            pythonProcess = spawn('arch', ['-arm64', 'python3', scriptPath]);
+        } else {
+            // Use 'python3' where available, fall back to 'python'
+            const executable = process.platform === 'win32' ? 'python' : 'python3';
+            pythonProcess = spawn(executable, [scriptPath]);
+        }
 
     let result = '';
     let errorOutput = '';
@@ -54,7 +58,7 @@ app.post('/analyze-face', (req, res) => {
     pythonProcess.on('error', (err) => {
         console.error('Failed to start Python process:', err);
         if (!res.headersSent) {
-            res.status(500).json({ error: 'Failed to start analysis engine. Is Python installed?' });
+            res.status(500).json({ error: 'Failed to start analysis engine. Is Python installed and on PATH?', detail: err.message });
         }
     });
 

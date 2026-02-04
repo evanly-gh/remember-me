@@ -77,6 +77,7 @@ export default function RecordScreen() {
     if (cameraRef.current) {
       const photo = await cameraRef.current.takePictureAsync({
         base64: true,
+        quality: 0.6, // Compress to 60% quality to stay under Rekognition 5MB limit
       });
       setCapturedPhoto(photo.uri);
       // Run face analysis asynchronously (won't block UI)
@@ -188,6 +189,7 @@ export default function RecordScreen() {
           // Added: Store date metadata (auto-populated)
           date: date || null,
           notes: '',
+          facial_details: analysis || null,
         });
 
       if (insertError) throw insertError;
