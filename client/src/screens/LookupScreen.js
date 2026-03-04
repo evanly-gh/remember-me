@@ -77,38 +77,86 @@ export default function LookupScreen({ navigation }) {
       return true;
     }
     
-    // Search in facial_details for attributes
+    // Search in facial_details for attributes (new microservice format)
     if (profile.facial_details) {
       try {
         const details = typeof profile.facial_details === 'string' 
           ? JSON.parse(profile.facial_details) 
           : profile.facial_details;
         
-        if (details && details.available && details.faces) {
-          // Search across all faces in the profile
-          return details.faces.some(face => {
-            // Match "smiling" or "smile"
-            if ((query.includes('smil') || query.includes('happy')) && face.smiling) {
+        // New format: { success: true, data: { ... } }
+        const d = details?.data || details;
+        if (d) {
+          // Match "smiling" or "smile" or "happy"
+          if ((query.includes('smil') || query.includes('happy')) && (d.smiling || d.smiling_celeba)) {
+            return true;
+          }
+          // Match "beard"
+          if (query.includes('beard') && d.has_beard) {
+            return true;
+          }
+          // Match emotions
+          if (d.primary_emotion && d.primary_emotion.toLowerCase().includes(query)) {
+            return true;
+          }
+          // Match "glasses" or "eyeglasses"
+          if (query.includes('glass') && (d.wearing_glasses || d.glasses_detected)) {
+            return true;
+          }
+          // Match gender
+          if (d.gender && d.gender.toLowerCase().includes(query)) {
+            return true;
+          }
+          // Match face shape
+          if (d.face_shape && d.face_shape.toLowerCase().includes(query)) {
+            return true;
+          }
+          // Match hair color
+          if (d.hair_color_celeba && d.hair_color_celeba.toLowerCase().includes(query)) {
+            return true;
+          }
+          if (d.hair_color?.name && d.hair_color.name.toLowerCase().includes(query)) {
+            return true;
+          }
+          // Match eye color
+          if (d.eye_color && typeof d.eye_color === 'string' && d.eye_color.toLowerCase().includes(query)) {
+            return true;
+          }
+          // Match ethnicity
+          if (d.ethnicity && d.ethnicity.toLowerCase().includes(query)) {
+            return true;
+          }
+          // Match age range
+          if (d.age_range && d.age_range.includes(query)) {
+            return true;
+          }
+          // Match hair length
+          if (d.hair_length && d.hair_length.toLowerCase().includes(query)) {
+            return true;
+          }
+          // Match eye shape
+          if (d.eye_shape && d.eye_shape.toLowerCase().includes(query)) {
+            return true;
+          }
+          // Match "hat"
+          if (query.includes('hat') && (d.wearing_hat || d.hat_detected)) {
+            return true;
+          }
+          // Match "bald"
+          if (query.includes('bald') && d.is_bald) {
+            return true;
+          }
+          // Match "young" / "old"
+          if (query.includes('young') && d.young) {
+            return true;
+          }
+          // Match jawline, nose, lip etc.
+          const textFields = ['jawline_type', 'chin_type', 'nose_shape', 'lip_fullness', 'eye_depth', 'eye_spacing', 'hair_texture', 'skin_undertone'];
+          for (const field of textFields) {
+            if (d[field] && d[field].toLowerCase().includes(query)) {
               return true;
             }
-            // Match "beard"
-            if (query.includes('beard') && face.has_beard) {
-              return true;
-            }
-            // Match emotions (e.g., "happy", "sad", "calm", "angry")
-            if (face.primary_emotion && face.primary_emotion.toLowerCase().includes(query)) {
-              return true;
-            }
-            // Match "glasses" or "eyeglasses"
-            if (query.includes('glass') && face.eyeglasses) {
-              return true;
-            }
-            // Match gender if available
-            if (face.gender && face.gender.toLowerCase().includes(query)) {
-              return true;
-            }
-            return false;
-          });
+          }
         }
       } catch (error) {
         console.error('Error parsing facial_details:', error);
@@ -118,44 +166,28 @@ export default function LookupScreen({ navigation }) {
     return false;
   });
 
-  // Sort filtered profiles by relevance if searching facial attributes
-  // Profiles with higher confidence scores appear first
+  // Sort filtered profiles alphabetically when searching
   if (searchQuery.trim()) {
-    filteredProfiles.sort((a, b) => {
-      const getRelevanceScore = (profile) => {
-        try {
-          const details = typeof profile.facial_details === 'string' 
-            ? JSON.parse(profile.facial_details) 
-            : profile.facial_details;
-          
-          if (!details || !details.faces) return 0;
-          
-          // Return highest confidence among matching faces
-          return Math.max(...details.faces.map(face => face.confidence || 0));
-        } catch {
-          return 0;
-        }
-      };
-      
-      return getRelevanceScore(b) - getRelevanceScore(a);
-    });
+    filteredProfiles.sort((a, b) => a.name.localeCompare(b.name));
   }
 
   // Added: Parse facial_details JSON and extract gender and age_range for display
   const getFacialDetails = (facialDetails) => {
-    if (!facialDetails) return { gender: '', ageRange: '' };
+    if (!facialDetails) return { gender: '', ageRange: '', faceShape: '' };
     
     try {
-      // Added: Handle both string (raw JSON) and object formats
       const details = typeof facialDetails === 'string' 
         ? JSON.parse(facialDetails) 
         : facialDetails;
+      // New format: { success: true, data: { ... } }
+      const d = details?.data || details;
       return {
-        gender: details.gender || '',
-        ageRange: details.age_range || '',
+        gender: d?.gender || '',
+        ageRange: d?.age_range || '',
+        faceShape: d?.face_shape || '',
       };
     } catch (error) {
-      return { gender: '', ageRange: '' };
+      return { gender: '', ageRange: '', faceShape: '' };
     }
   };
 
@@ -195,8 +227,8 @@ export default function LookupScreen({ navigation }) {
           filteredProfiles.map((profile) => {
             // Added: Extract facial details for display
             const details = getFacialDetails(profile.facial_details);
-            // Added: Format facial details as readable text (e.g., "Male • 25-30")
-            const description = [details.gender, details.ageRange].filter(Boolean).join(' • ');
+            // Added: Format facial details as readable text (e.g., "Male • 25-30 • Oval")
+            const description = [details.gender, details.ageRange, details.faceShape].filter(Boolean).join(' • ');
 
             return (
               // Added: Touchable card that navigates to EditProfileScreen

@@ -344,7 +344,10 @@ export default function EditProfileScreen({ route, navigation }) {
                 ? JSON.parse(selectedPhoto.facial_details) 
                 : selectedPhoto.facial_details;
               
-              if (!details || !details.available) {
+              // Support new format: { success: true, data: { ... } }
+              const d = details?.data || details;
+
+              if (!d || details?.success === false) {
                 return (
                   <View style={styles.recentItem}>
                     <Text style={styles.recentValue}>
@@ -354,61 +357,111 @@ export default function EditProfileScreen({ route, navigation }) {
                 );
               }
 
+              // Helper to render a detail row
+              const Row = ({ label, value }) => {
+                if (value === undefined || value === null || value === '') return null;
+                const displayVal = typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value);
+                return (
+                  <View style={styles.recentItem}>
+                    <Text style={styles.recentLabel}>{label}:</Text>
+                    <Text style={styles.recentValue}>{displayVal}</Text>
+                  </View>
+                );
+              };
+
               return (
                 <>
-                  <View style={styles.recentItem}>
-                    <Text style={styles.recentLabel}>Faces Detected:</Text>
-                    <Text style={styles.recentValue}>{details.face_count || 0}</Text>
-                  </View>
-                  {details.faces && details.faces.map((face, index) => (
-                    <View key={index} style={styles.faceDetail}>
-                      <Text style={styles.faceDetailTitle}>Face {index + 1}</Text>
-                      <View style={styles.recentItem}>
-                        <Text style={styles.recentLabel}>Confidence:</Text>
-                        <Text style={styles.recentValue}>{face.confidence?.toFixed(1)}%</Text>
-                      </View>
-                      {face.primary_emotion && (
-                        <View style={styles.recentItem}>
-                          <Text style={styles.recentLabel}>Primary Emotion:</Text>
-                          <Text style={styles.recentValue}>{face.primary_emotion}</Text>
-                        </View>
-                      )}
-                      <View style={styles.recentItem}>
-                        <Text style={styles.recentLabel}>Smiling:</Text>
-                        <Text style={styles.recentValue}>
-                          {face.smiling ? 'Yes' : 'No'} ({face.smile_confidence?.toFixed(1)}%)
-                        </Text>
-                      </View>
-                      {face.has_beard !== undefined && (
-                        <View style={styles.recentItem}>
-                          <Text style={styles.recentLabel}>Beard:</Text>
-                          <Text style={styles.recentValue}>{face.has_beard ? 'Yes' : 'No'}</Text>
-                        </View>
-                      )}
-                      {face.eyeglasses !== undefined && (
-                        <View style={styles.recentItem}>
-                          <Text style={styles.recentLabel}>Eyeglasses:</Text>
-                          <Text style={styles.recentValue}>
-                            {face.eyeglasses ? 'Yes' : 'No'} ({face.eyeglasses_confidence?.toFixed(1)}%)
-                          </Text>
-                        </View>
-                      )}
-                      {face.gender && (
-                        <View style={styles.recentItem}>
-                          <Text style={styles.recentLabel}>Gender:</Text>
-                          <Text style={styles.recentValue}>
-                            {face.gender} ({face.gender_confidence?.toFixed(1)}%)
-                          </Text>
-                        </View>
-                      )}
-                      {face.age_range && (
-                        <View style={styles.recentItem}>
-                          <Text style={styles.recentLabel}>Age Range:</Text>
-                          <Text style={styles.recentValue}>{face.age_range}</Text>
-                        </View>
-                      )}
-                    </View>
-                  ))}
+                  {/* Demographics */}
+                  <Text style={styles.faceDetailTitle}>Demographics</Text>
+                  <Row label="Gender" value={d.gender} />
+                  <Row label="Age Range" value={d.age_range} />
+                  <Row label="Age Estimate" value={d.age_estimate} />
+                  <Row label="Ethnicity" value={d.ethnicity} />
+
+                  {/* Emotion */}
+                  <Text style={styles.faceDetailTitle}>Emotion</Text>
+                  <Row label="Primary Emotion" value={d.primary_emotion} />
+                  <Row label="Secondary Emotion" value={d.secondary_emotion} />
+                  <Row label="Mood" value={d.mood} />
+                  <Row label="Smiling" value={d.smiling} />
+
+                  {/* Face Shape */}
+                  <Text style={styles.faceDetailTitle}>Face Structure</Text>
+                  <Row label="Face Shape" value={d.face_shape} />
+                  <Row label="Jawline" value={d.jawline_type} />
+                  <Row label="Chin" value={d.chin_type} />
+                  <Row label="Cheekbones" value={d.cheekbone_prominence} />
+                  <Row label="Forehead" value={d.forehead_width} />
+
+                  {/* Eyes */}
+                  <Text style={styles.faceDetailTitle}>Eyes</Text>
+                  <Row label="Eye Shape" value={d.eye_shape} />
+                  <Row label="Eye Color" value={typeof d.eye_color === 'string' ? d.eye_color : d.eye_color?.name} />
+                  <Row label="Eye Depth" value={d.eye_depth} />
+                  <Row label="Eye Spacing" value={d.eye_spacing} />
+                  <Row label="Eye Size" value={d.eye_size} />
+
+                  {/* Eyebrows */}
+                  <Text style={styles.faceDetailTitle}>Eyebrows</Text>
+                  <Row label="Shape" value={d.eyebrow_shape} />
+                  <Row label="Arch" value={d.eyebrow_arch_height} />
+                  <Row label="Thickness" value={d.eyebrow_thickness} />
+                  <Row label="Arched (CelebA)" value={d.arched_eyebrows} />
+                  <Row label="Bushy (CelebA)" value={d.bushy_eyebrows} />
+
+                  {/* Nose */}
+                  <Text style={styles.faceDetailTitle}>Nose</Text>
+                  <Row label="Shape" value={d.nose_shape} />
+                  <Row label="Bridge" value={d.nose_bridge} />
+                  <Row label="Tip" value={d.nose_tip_shape} />
+                  <Row label="Nostril Width" value={d.nostril_width} />
+
+                  {/* Lips & Mouth */}
+                  <Text style={styles.faceDetailTitle}>Lips & Mouth</Text>
+                  <Row label="Lip Fullness" value={d.lip_fullness} />
+                  <Row label="Lip Balance" value={d.lip_balance} />
+                  <Row label="Mouth Width" value={d.mouth_width} />
+                  <Row label="Cupid's Bow" value={d.cupids_bow} />
+                  <Row label="Lip Color" value={d.lip_color?.shade} />
+
+                  {/* Hair */}
+                  <Text style={styles.faceDetailTitle}>Hair</Text>
+                  <Row label="Hair Color" value={d.hair_color?.name || d.hair_color_celeba} />
+                  <Row label="Hair Texture" value={d.hair_texture || d.hair_texture_celeba} />
+                  <Row label="Hair Length" value={d.hair_length} />
+                  <Row label="Bangs" value={d.has_bangs} />
+                  <Row label="Bald" value={d.is_bald} />
+                  <Row label="Receding Hairline" value={d.receding_hairline} />
+
+                  {/* Facial Hair */}
+                  <Text style={styles.faceDetailTitle}>Facial Hair</Text>
+                  <Row label="Has Beard" value={d.has_beard} />
+                  {d.facial_hair && (
+                    <>
+                      <Row label="Goatee" value={d.facial_hair.goatee} />
+                      <Row label="Mustache" value={d.facial_hair.mustache} />
+                      <Row label="Sideburns" value={d.facial_hair.sideburns} />
+                    </>
+                  )}
+
+                  {/* Skin */}
+                  <Text style={styles.faceDetailTitle}>Skin</Text>
+                  <Row label="Skin Tone" value={d.skin_tone?.fitzpatrick} />
+                  <Row label="Skin Hex" value={d.skin_tone?.hex_color} />
+                  <Row label="Undertone" value={d.skin_undertone} />
+                  <Row label="Wrinkles" value={d.wrinkle_level} />
+                  <Row label="Freckles/Moles" value={d.freckles_or_moles} />
+                  <Row label="Pale Skin" value={d.pale_skin} />
+
+                  {/* Accessories */}
+                  <Text style={styles.faceDetailTitle}>Accessories</Text>
+                  <Row label="Glasses" value={d.wearing_glasses || d.glasses_detected} />
+                  <Row label="Hat" value={d.wearing_hat || d.hat_detected} />
+                  <Row label="Earrings" value={d.wearing_earrings || d.earring_detected} />
+                  <Row label="Necklace" value={d.wearing_necklace || d.necklace_detected} />
+                  <Row label="Necktie" value={d.wearing_necktie} />
+                  <Row label="Heavy Makeup" value={d.heavy_makeup} />
+                  <Row label="Lipstick" value={d.wearing_lipstick} />
                 </>
               );
             } catch (error) {

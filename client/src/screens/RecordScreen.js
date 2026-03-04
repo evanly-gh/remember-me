@@ -224,18 +224,20 @@ export default function RecordScreen() {
           )}
 
           {/* Display analysis results when available */}
-          {analysis && analysis.available && (
+          {analysis && analysis.success && (
             <View style={styles.analysisOverlay}>
               <Text style={styles.analysisText}>
-                {analysis.face_count > 0 
-                  ? `Detected ${analysis.face_count} face(s)` 
-                  : 'No faces detected'}
+                Face detected
               </Text>
-              {/* {analysis.faces && analysis.faces.map((face, i) => (
-                <Text key={i} style={styles.analysisSubtext}>
-                  Face {i+1}: {face.primary_emotion} {face.smiling ? '😊' : ''}
+              {analysis.data && (
+                <Text style={styles.analysisSubtext}>
+                  {[
+                    analysis.data.gender,
+                    analysis.data.age_range,
+                    analysis.data.primary_emotion,
+                  ].filter(Boolean).join(' · ')}
                 </Text>
-              ))} */}
+              )}
             </View>
           )}
 
@@ -420,5 +422,26 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#fff',
+  },
+  analysisOverlay: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    right: 10,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 8,
+    padding: 8,
+  },
+  analysisText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  analysisSubtext: {
+    color: '#ccc',
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 2,
   },
 });
