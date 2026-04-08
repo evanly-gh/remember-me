@@ -151,7 +151,7 @@ async def analyze_face(file: UploadFile = File(...)):
             img_array,
             skin_mask=parse_results.get("_skin_mask"),
             hair_mask=parse_results.get("_hair_mask"),
-            landmark_data=landmark_results.get("_raw_landmarks"),
+            landmarks=landmark_results.get("_raw_landmarks"),
         )
         results.update(color_results)
 
@@ -217,7 +217,7 @@ async def analyze_face_base64(body: dict):
             img_array,
             skin_mask=parse_results.get("_skin_mask"),
             hair_mask=parse_results.get("_hair_mask"),
-            landmark_data=landmark_results.get("_raw_landmarks"),
+            landmarks=landmark_results.get("_raw_landmarks"),
         )
         results.update(color_results)
 
