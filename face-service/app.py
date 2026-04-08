@@ -153,11 +153,7 @@ async def analyze_face(file: UploadFile = File(...)):
             img_array,
             skin_mask=parse_results.get("_skin_mask"),
             hair_mask=parse_results.get("_hair_mask"),
-<<<<<<< HEAD
             landmarks=landmark_results.get("_raw_landmarks"),
-=======
-            landmarks=landmark_data,
->>>>>>> 58fd0a8354a269a95a80dcb57ade045caee12c01
         )
         results.update(color_results)
 
