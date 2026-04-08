@@ -362,3 +362,19 @@ Expected. Models are lazy-loaded on first call.
 
 AWS Rekognition credentials are no longer needed for the new pipeline.
 The old Rekognition scripts can remain in repo for reference, but current runtime path is Node -> Python service -> local models.
+
+# HF vs Local testing
+You do not need to run the Python face-service locally if the HF Space is running.
+
+If you want the full local setup instead of HF:
+
+In face-service:
+create/activate the Python venv
+pip install -r requirements.txt
+uvicorn app:app --host 0.0.0.0 --port 8000
+In server:
+set FACE_SERVICE_URL=http://localhost:8000
+npm start
+In client:
+set EXPO_PUBLIC_FACE_ANALYSIS_URL to your Node server URL
+npm start

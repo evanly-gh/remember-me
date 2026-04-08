@@ -36,18 +36,32 @@ class DemographicAnalyzer:
         try:
             return pipeline("image-classification", model=model_id)
         except Exception as exc:
-            raise RuntimeError(f"Could not load public pretrained model '{model_id}': {exc}") from exc
+            print(f"[DemographicAnalyzer] Failed to load '{model_id}': {exc}")
+            return None
 
     def analyze(self, img_rgb) -> dict[str, Any]:
         pil = Image.fromarray(img_rgb)
 
-        age_predictions = self.age_classifier(pil, top_k=3)
-        gender_predictions = self.gender_classifier(pil, top_k=2)
-        race_predictions = self.race_classifier(pil, top_k=7)
+        age_predictions = self._safe_predict(self.age_classifier, pil, top_k=3)
+        gender_predictions = self._safe_predict(self.gender_classifier, pil, top_k=2)
+        race_predictions = self._safe_predict(self.race_classifier, pil, top_k=7)
 
-        age_prediction = age_predictions[0]
-        gender_prediction = gender_predictions[0]
-        race_prediction = race_predictions[0]
+        if not age_predictions and not gender_predictions and not race_predictions:
+            return {
+                "age_range": "unknown",
+                "age_estimate": 0.0,
+                "age_confidence": 0.0,
+                "gender": "unknown",
+                "gender_confidence": 0.0,
+                "ethnicity": "unknown",
+                "ethnicity_confidence": 0.0,
+                "age_distribution": {label: 0.0 for label in AGE_LABELS},
+                "ethnicity_distribution": {label: 0.0 for label in RACE_LABELS},
+            }
+
+        age_prediction = age_predictions[0] if age_predictions else {"label": "unknown", "score": 0.0}
+        gender_prediction = gender_predictions[0] if gender_predictions else {"label": "unknown", "score": 0.0}
+        race_prediction = race_predictions[0] if race_predictions else {"label": "unknown", "score": 0.0}
 
         age_label = self._normalize_age_label(age_prediction["label"])
         gender_label = self._normalize_gender_label(gender_prediction["label"])
@@ -117,3 +131,13 @@ class DemographicAnalyzer:
             if normalized_label in distribution:
                 distribution[normalized_label] = round(float(prediction["score"]), 3)
         return distribution
+
+    @staticmethod
+    def _safe_predict(classifier, image, top_k: int):
+        if classifier is None:
+            return []
+        try:
+            return classifier(image, top_k=top_k)
+        except Exception as exc:
+            print(f"[DemographicAnalyzer] Prediction failed: {exc}")
+            return []

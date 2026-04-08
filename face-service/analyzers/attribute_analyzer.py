@@ -61,7 +61,8 @@ class AttributeAnalyzer:
         try:
             return pipeline("zero-shot-image-classification", model=CLIP_MODEL_ID)
         except Exception as exc:
-            raise RuntimeError(f"Could not load CLIP zero-shot classifier: {exc}") from exc
+            print(f"[AttributeAnalyzer] Failed to load CLIP classifier: {exc}")
+            return None
 
     def analyze(self, img_rgb) -> dict[str, Any]:
         pil = Image.fromarray(img_rgb)
@@ -72,11 +73,18 @@ class AttributeAnalyzer:
         candidate_labels.extend(HAIR_COLOR_LABELS)
         candidate_labels.extend(HAIR_TEXTURE_LABELS)
 
-        predictions = self.classifier(
-            pil,
-            candidate_labels=candidate_labels,
-            hypothesis_template="a photo of {}",
-        )
+        if self.classifier is None:
+            return self._empty_result()
+
+        try:
+            predictions = self.classifier(
+                pil,
+                candidate_labels=candidate_labels,
+                hypothesis_template="a photo of {}",
+            )
+        except Exception as exc:
+            print(f"[AttributeAnalyzer] Prediction failed: {exc}")
+            return self._empty_result()
         score_map = {item["label"]: float(item["score"]) for item in predictions}
 
         result: dict[str, Any] = {"_celeba_raw": {k: round(v, 3) for k, v in score_map.items()}}
@@ -139,3 +147,47 @@ class AttributeAnalyzer:
         result["mouth_open"] = pair_score("mouth_open")[0]
 
         return result
+
+    @staticmethod
+    def _empty_result() -> dict[str, Any]:
+        return {
+            "_celeba_raw": {},
+            "hair_color_celeba": "unknown",
+            "hair_color_scores": {"black": 0.0, "blond": 0.0, "brown": 0.0, "gray": 0.0},
+            "hair_texture_celeba": "unknown",
+            "has_bangs": False,
+            "is_bald": False,
+            "receding_hairline": False,
+            "has_beard": False,
+            "facial_hair": {
+                "5_o_clock_shadow": False,
+                "goatee": False,
+                "mustache": False,
+                "sideburns": False,
+                "full_beard": False,
+            },
+            "wearing_glasses": False,
+            "wearing_earrings": False,
+            "wearing_hat": False,
+            "wearing_necklace": False,
+            "wearing_necktie": False,
+            "heavy_makeup": False,
+            "wearing_lipstick": False,
+            "big_nose": False,
+            "pointy_nose": False,
+            "big_lips": False,
+            "high_cheekbones": False,
+            "oval_face_celeba": False,
+            "double_chin": False,
+            "chubby": False,
+            "rosy_cheeks": False,
+            "bags_under_eyes": False,
+            "narrow_eyes": False,
+            "arched_eyebrows": False,
+            "bushy_eyebrows": False,
+            "pale_skin": False,
+            "attractive": False,
+            "young": False,
+            "smiling_celeba": False,
+            "mouth_open": False,
+        }
