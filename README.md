@@ -149,6 +149,7 @@ If you already have the project, just go to root:
 cd C:\Users\evanl\OneDrive\Documents\VSCode\HCP
 ```
 
+### START HERE IF YOU ALREADY HAVE (Node, Git, Supabase, HuggingFace, ExpoGo) setup
 ## 5. Install Dependencies (All Folders)
 
 Run these exactly where shown.
@@ -184,8 +185,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\.venv\Scripts\Activate.ps1
 ```
 
-## 6. Environment Variables
-
+## 6. Environment Variables (skip if already set)
 ## 6.1 Client env file (`client/.env`)
 
 Create `client/.env` (copy from `client/.env.example`) and set:
@@ -378,3 +378,5 @@ npm start
 In client:
 set EXPO_PUBLIC_FACE_ANALYSIS_URL to your Node server URL
 npm start
+
+
