@@ -88,6 +88,20 @@ def get_analyzers():
     )
 
 
+@app.get("/")
+async def root():
+    """Root endpoint — returns API information."""
+    return {
+        "name": "HCP Face Analysis Service",
+        "version": "2.0.0",
+        "status": "running",
+        "endpoints": {
+            "health": "/health",
+            "analyze": "/analyze"
+        }
+    }
+
+
 @app.get("/health")
 async def health():
     """Health check endpoint — use to keep the service warm."""
