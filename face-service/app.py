@@ -161,8 +161,6 @@ async def analyze_face(file: UploadFile = File(...)):
 
         # Step 6: Color analysis using masks from Step 4 + landmarks from Step 1
         logger.info("Running color analysis...")
-        landmark_data = landmark_results.get("_raw_landmarks")
-        print(type(landmark_data))
         color_results = colors.analyze(
             img_array,
             skin_mask=parse_results.get("_skin_mask"),
@@ -229,8 +227,6 @@ async def analyze_face_base64(body: dict):
         emo_results = emotions.analyze(img_array)
         results.update(emo_results)
 
-        landmark_data = landmark_results.get("_raw_landmarks")
-        print(type(landmark_data))
         color_results = colors.analyze(
             img_array,
             skin_mask=parse_results.get("_skin_mask"),

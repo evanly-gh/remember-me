@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, Switch } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../context/AuthContext';
@@ -7,7 +7,6 @@ export default function SettingsScreen() {
   const { user, signOut } = useAuth();
   const [showFacialDetails, setShowFacialDetails] = useState(false);
 
-  // Load settings from AsyncStorage on mount
   useEffect(() => {
     loadSettings();
   }, []);
@@ -57,8 +56,8 @@ export default function SettingsScreen() {
           <Switch
             value={showFacialDetails}
             onValueChange={toggleFacialDetails}
-            trackColor={{ false: '#767577', true: '#81b0ff' }}
-            thumbColor={showFacialDetails ? '#007AFF' : '#f4f3f4'}
+            trackColor={{ false: '#E5E7EB', true: '#C4B5FD' }}
+            thumbColor={showFacialDetails ? '#8B5CF6' : '#f4f3f4'}
           />
         </View>
       </View>
@@ -91,33 +90,35 @@ const styles = StyleSheet.create({
   },
   settingLabel: {
     fontSize: 16,
-    color: '#333',
+    color: '#1F2937',
     fontWeight: '600',
     marginBottom: 4,
   },
   settingDescription: {
     fontSize: 13,
-    color: '#666',
+    color: '#6B7280',
   },
   label: {
     fontSize: 14,
-    color: '#666',
+    color: '#6B7280',
     marginBottom: 5,
   },
   value: {
     fontSize: 16,
-    color: '#333',
+    color: '#1F2937',
   },
   signOutButton: {
-    backgroundColor: '#FF3B30',
+    borderWidth: 1,
+    borderColor: '#FEE2E2',
+    backgroundColor: '#FEF2F2',
     padding: 15,
-    borderRadius: 8,
+    borderRadius: 12,
     alignItems: 'center',
     marginTop: 20,
   },
   signOutText: {
-    color: '#fff',
+    color: '#EF4444',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
   },
 });

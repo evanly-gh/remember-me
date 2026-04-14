@@ -1,6 +1,5 @@
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-// Added: Stack navigator to allow nested navigation (Lookup -> EditProfile)
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,19 +8,14 @@ import { View, ActivityIndicator } from 'react-native';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import RecordScreen from './src/screens/RecordScreen';
 import LookupScreen from './src/screens/LookupScreen';
-// Added: New screen for editing profile information
 import EditProfileScreen from './src/screens/EditProfileScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import AuthScreen from './src/screens/AuthScreen';
 
 const Tab = createBottomTabNavigator();
-// Added: Stack navigator for nested navigation within Lookup tab
 const Stack = createNativeStackNavigator();
 
-// Added: Nested stack navigator for Lookup tab screens
-// This allows LookupScreen and EditProfileScreen to share navigation context
-// while remaining under the Lookup bottom tab
-function LookupStack() {
+function ContactsStack() {
   return (
     <Stack.Navigator
       screenOptions={{
@@ -29,13 +23,11 @@ function LookupStack() {
         cardStyle: { backgroundColor: '#fff' },
       }}
     >
-      {/* Added: Main Lookup screen that lists all profiles */}
       <Stack.Screen
-        name="LookupMain"
+        name="ContactsMain"
         component={LookupScreen}
         options={{ headerShown: false }}
       />
-      {/* Added: Edit profile screen for modifying profile details */}
       <Stack.Screen
         name="EditProfile"
         component={EditProfileScreen}
@@ -50,8 +42,8 @@ function MainNavigator() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#007AFF" />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+        <ActivityIndicator size="large" color="#8B5CF6" />
       </View>
     );
   }
@@ -62,17 +54,21 @@ function MainNavigator() {
 
   return (
     <Tab.Navigator
-      initialRouteName="Lookup"
+      initialRouteName="Contacts"
       screenOptions={({ route }) => ({
-        tabBarActiveTintColor: '#007AFF',
-        tabBarInactiveTintColor: '#8E8E93',
+        tabBarActiveTintColor: '#8B5CF6',
+        tabBarInactiveTintColor: '#9CA3AF',
+        tabBarStyle: {
+          backgroundColor: '#fff',
+          borderTopColor: '#F3F4F6',
+        },
         tabBarIcon: ({ focused, color, size }) => {
           let iconName;
 
-          if (route.name === 'Record') {
-            iconName = focused ? 'camera' : 'camera-outline';
-          } else if (route.name === 'Lookup') {
-            iconName = focused ? 'search' : 'search-outline';
+          if (route.name === 'Contacts') {
+            iconName = focused ? 'people' : 'people-outline';
+          } else if (route.name === 'Add') {
+            iconName = focused ? 'add-circle' : 'add-circle-outline';
           } else if (route.name === 'Settings') {
             iconName = focused ? 'settings' : 'settings-outline';
           }
@@ -82,16 +78,15 @@ function MainNavigator() {
       })}
     >
       <Tab.Screen
-        name="Record"
-        component={RecordScreen}
+        name="Contacts"
+        component={ContactsStack}
         options={{
           headerShown: false,
         }}
       />
-      {/* Added: Use LookupStack instead of direct LookupScreen to enable nested navigation */}
       <Tab.Screen
-        name="Lookup"
-        component={LookupStack}
+        name="Add"
+        component={RecordScreen}
         options={{
           headerShown: false,
         }}

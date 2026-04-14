@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   View,
   TextInput,
@@ -14,45 +14,30 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
-// Added: Supabase client for querying and updating profile records
 import { supabase } from '../lib/supabase';
-// Added: Authentication context to get current user ID
 import { useAuth } from '../context/AuthContext';
 
-// Added: Screen to edit an existing profile with photo selection and metadata editing
 export default function EditProfileScreen({ route, navigation }) {
-  // Added: Extract profile name from navigation route params
   const { profileName } = route.params;
-  // Added: Store all records for this profile (all photos with same name)
   const [records, setRecords] = useState([]);
-  // Added: Loading state while fetching records from database
   const [loading, setLoading] = useState(true);
-  // Added: Loading state while saving updated profile
   const [saving, setSaving] = useState(false);
-  // Added: Currently selected record for editing and display
   const [selectedPhoto, setSelectedPhoto] = useState(null);
-  // Added: Get current user ID from auth context
   const { user } = useAuth();
 
-  // Added: Form state for editable fields
   const [name, setName] = useState(profileName);
   const [title, setTitle] = useState('');
   const [event, setEvent] = useState('');
   const [location, setLocation] = useState('');
   const [date, setDate] = useState('');
-  // Added: State for settings toggle (show facial details)
   const [showFacialDetails, setShowFacialDetails] = useState(false);
 
-  // Added: Load all records for this profile when component mounts
   useEffect(() => {
-    if (user) {
-      loadRecords();
-    }
+    if (user) loadRecords();
   }, [user, profileName]);
 
-  // Added: Load settings when screen is focused
   useFocusEffect(
-    React.useCallback(() => {
+    useCallback(() => {
       loadSettings();
     }, [])
   );
@@ -66,11 +51,9 @@ export default function EditProfileScreen({ route, navigation }) {
     }
   };
 
-  // Added: Fetch all records from Supabase with matching profile name
   const loadRecords = async () => {
     try {
       setLoading(true);
-      // Added: Query all records for current user with matching name
       const { data, error } = await supabase
         .from('people')
         .select('*')
@@ -81,8 +64,7 @@ export default function EditProfileScreen({ route, navigation }) {
       if (error) throw error;
 
       setRecords(data);
-      
-      // Added: Initialize form with most recent record's data
+
       if (data && data.length > 0) {
         const mostRecent = data[0];
         setSelectedPhoto(mostRecent);
@@ -99,16 +81,14 @@ export default function EditProfileScreen({ route, navigation }) {
     }
   };
 
-  // Added: Save updated profile information to selected record
   const handleSave = async () => {
     if (!selectedPhoto) {
-      Alert.alert('Error', 'Please select a photo');
+      Alert.alert('Error', 'No record selected');
       return;
     }
 
     try {
       setSaving(true);
-      // Added: Update the selected record with new field values
       const { error } = await supabase
         .from('people')
         .update({
@@ -122,8 +102,7 @@ export default function EditProfileScreen({ route, navigation }) {
 
       if (error) throw error;
 
-      // Added: After saving, navigate back to Lookup; LookupScreen uses focus listener to reload
-      Alert.alert('Success', 'Profile updated successfully');
+      Alert.alert('Saved', 'Profile updated successfully');
       navigation.goBack();
     } catch (error) {
       console.error('Error saving profile:', error);
@@ -133,18 +112,16 @@ export default function EditProfileScreen({ route, navigation }) {
     }
   };
 
-  // Added: Delete a single photo record from profile (ask for confirmation first)
-  const handleDelete = async (recordId) => {
+  const handleDeletePhoto = async (recordId) => {
     Alert.alert(
-      'Delete Record',
-      'Are you sure you want to delete this record?',
+      'Delete Photo',
+      'Are you sure you want to delete this photo?',
       [
-        { text: 'Cancel', onPress: () => {}, style: 'cancel' },
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           onPress: async () => {
             try {
-              // Added: Delete the specific record from database
               const { error } = await supabase
                 .from('people')
                 .delete()
@@ -152,12 +129,11 @@ export default function EditProfileScreen({ route, navigation }) {
 
               if (error) throw error;
 
-              Alert.alert('Success', 'Record deleted');
-              // Added: Reload records to update display
+              Alert.alert('Deleted', 'Photo removed');
               loadRecords();
             } catch (error) {
               console.error('Error deleting record:', error);
-              Alert.alert('Error', 'Failed to delete record');
+              Alert.alert('Error', 'Failed to delete photo');
             }
           },
           style: 'destructive',
@@ -166,502 +142,550 @@ export default function EditProfileScreen({ route, navigation }) {
     );
   };
 
-  // Added: Show loading spinner while fetching profile records
+  const handleDeleteContact = () => {
+    Alert.alert(
+      'Delete Contact',
+      `Delete ${name} and all associated photos? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('people')
+                .delete()
+                .eq('user_id', user.id)
+                .eq('name', profileName);
+
+              if (error) throw error;
+
+              navigation.goBack();
+            } catch (error) {
+              console.error('Error deleting contact:', error);
+              Alert.alert('Error', 'Failed to delete contact');
+            }
+          },
+          style: 'destructive',
+        },
+      ]
+    );
+  };
+
   if (loading) {
     return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#007AFF" />
-      </View>
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#8B5CF6" />
+        </View>
+      </SafeAreaView>
     );
   }
 
-  // Added: Extract recent history from all records for display
-  const recentDates = records
-    .slice(0, 3)
-    .map(r => r.date)
-    .filter(Boolean);
+  const recentDates = records.slice(0, 3).map(r => r.date).filter(Boolean);
+  const recentLocations = records.slice(0, 3).map(r => r.location).filter(Boolean);
+  const recentEvents = records.slice(0, 3).map(r => r.event).filter(Boolean);
 
-  const recentLocations = records
-    .slice(0, 3)
-    .map(r => r.location)
-    .filter(Boolean);
-
-  const recentEvents = records
-    .slice(0, 3)
-    .map(r => r.event)
-    .filter(Boolean);
-
-  // Added: Main render with header, photo display, edit form, and recent history
-  // Wrapped in SafeAreaView so header buttons are reachable and not overlapped
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView style={styles.container}>
-      {/* Added: Header with back button, title, and save button */}
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="chevron-back" size={28} color="#007AFF" />
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
+          <Ionicons name="chevron-back" size={24} color="#8B5CF6" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Edit Profile</Text>
-        <TouchableOpacity 
-          onPress={handleSave}
-          disabled={saving}
-        >
+        <TouchableOpacity onPress={handleSave} disabled={saving} style={styles.headerButton}>
           {saving ? (
-            <ActivityIndicator size="small" color="#007AFF" />
+            <ActivityIndicator size="small" color="#8B5CF6" />
           ) : (
-            <Text style={styles.saveButton}>Save</Text>
+            <Text style={styles.saveText}>Save</Text>
           )}
         </TouchableOpacity>
       </View>
 
-      {/* Added: Display main profile photo with date */}
-      {selectedPhoto && (
-        <View style={styles.photoSection}>
-          <Image
-            source={{ uri: selectedPhoto.photo_url }}
-            style={styles.mainPhoto}
-          />
-          <Text style={styles.photoDate}>
-            {selectedPhoto.created_at 
-              ? new Date(selectedPhoto.created_at).toLocaleDateString() 
-              : 'No date'}
-          </Text>
-        </View>
-      )}
-
-      {/* Added: Horizontal scrollable gallery of all photos for this profile */}
-      {records.length > 1 && (
-        <View style={styles.gallerySection}>
-          <Text style={styles.sectionTitle}>All Photos ({records.length})</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.gallery}>
-            {records.map((record) => (
-              <TouchableOpacity
-                key={record.id}
-                onPress={() => setSelectedPhoto(record)}
-                style={[
-                  styles.galleryItem,
-                  selectedPhoto?.id === record.id && styles.galleryItemSelected,
-                ]}
-              >
-                <Image
-                  source={{ uri: record.photo_url }}
-                  style={styles.galleryPhoto}
-                />
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      )}
-
-      {/* Added: Editable form fields for profile information */}
-      <View style={styles.formSection}>
-        <Text style={styles.sectionTitle}>Profile Information</Text>
-
-        <View style={styles.formGroup}>
-          <Text style={styles.label}>Name</Text>
-          <TextInput
-            style={styles.input}
-            value={name}
-            onChangeText={setName}
-            placeholder="Enter name"
-          />
+      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+        {/* Hero section */}
+        <View style={styles.heroSection}>
+          {selectedPhoto?.photo_url ? (
+            <Image source={{ uri: selectedPhoto.photo_url }} style={styles.heroPhoto} />
+          ) : (
+            <View style={[styles.heroPhoto, styles.heroPhotoPlaceholder]}>
+              <Ionicons name="person" size={48} color="#8B5CF6" />
+            </View>
+          )}
+          <Text style={styles.heroName}>{name}</Text>
+          {title ? <Text style={styles.heroTitle}>{title}</Text> : null}
+          {selectedPhoto?.created_at && (
+            <Text style={styles.heroDate}>
+              {new Date(selectedPhoto.created_at).toLocaleDateString()}
+            </Text>
+          )}
         </View>
 
-        <View style={styles.formGroup}>
-          <Text style={styles.label}>Title</Text>
-          <TextInput
-            style={styles.input}
-            value={title}
-            onChangeText={setTitle}
-            placeholder="Enter title (e.g., Friend, Colleague)"
-          />
-        </View>
-
-        <View style={styles.formGroup}>
-          <Text style={styles.label}>Event</Text>
-          <TextInput
-            style={styles.input}
-            value={event}
-            onChangeText={setEvent}
-            placeholder="Enter event"
-          />
-        </View>
-
-        <View style={styles.formGroup}>
-          <Text style={styles.label}>Location</Text>
-          <TextInput
-            style={styles.input}
-            value={location}
-            onChangeText={setLocation}
-            placeholder="Enter location"
-          />
-        </View>
-
-        <View style={styles.formGroup}>
-          <Text style={styles.label}>Date</Text>
-          <TextInput
-            style={styles.input}
-            value={date}
-            onChangeText={setDate}
-            placeholder="YYYY-MM-DD"
-          />
-        </View>
-      </View>
-
-      {/* Added: Display recent history from all records with this name */}
-      <View style={styles.recentSection}>
-        <Text style={styles.sectionTitle}>Recent History</Text>
-
-        {recentDates.length > 0 && (
-          <View style={styles.recentItem}>
-            <Text style={styles.recentLabel}>Recent Dates:</Text>
-            <Text style={styles.recentValue}>{recentDates.join(', ')}</Text>
+        {/* Photo gallery */}
+        {records.length > 1 && (
+          <View style={styles.gallerySection}>
+            <Text style={styles.sectionHeader}>Photos ({records.length})</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.gallery}>
+              {records.map((record) => (
+                <TouchableOpacity
+                  key={record.id}
+                  onPress={() => setSelectedPhoto(record)}
+                  style={[
+                    styles.galleryItem,
+                    selectedPhoto?.id === record.id && styles.galleryItemSelected,
+                  ]}
+                >
+                  <Image source={{ uri: record.photo_url }} style={styles.galleryPhoto} />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
         )}
 
-        {recentLocations.length > 0 && (
-          <View style={styles.recentItem}>
-            <Text style={styles.recentLabel}>Recent Locations:</Text>
-            <Text style={styles.recentValue}>{recentLocations.join(', ')}</Text>
+        {/* Info fields */}
+        <View style={styles.infoSection}>
+          <Text style={styles.sectionHeader}>Information</Text>
+
+          <View style={styles.fieldRow}>
+            <Text style={styles.fieldLabel}>Name</Text>
+            <TextInput
+              style={styles.fieldValue}
+              value={name}
+              onChangeText={setName}
+              placeholder="Name"
+              placeholderTextColor="#9CA3AF"
+            />
+          </View>
+          <View style={styles.fieldSeparator} />
+
+          <View style={styles.fieldRow}>
+            <Text style={styles.fieldLabel}>Title</Text>
+            <TextInput
+              style={styles.fieldValue}
+              value={title}
+              onChangeText={setTitle}
+              placeholder="Add title"
+              placeholderTextColor="#9CA3AF"
+            />
+          </View>
+          <View style={styles.fieldSeparator} />
+
+          <View style={styles.fieldRow}>
+            <Text style={styles.fieldLabel}>Event</Text>
+            <TextInput
+              style={styles.fieldValue}
+              value={event}
+              onChangeText={setEvent}
+              placeholder="Add event"
+              placeholderTextColor="#9CA3AF"
+            />
+          </View>
+          <View style={styles.fieldSeparator} />
+
+          <View style={styles.fieldRow}>
+            <Text style={styles.fieldLabel}>Location</Text>
+            <TextInput
+              style={styles.fieldValue}
+              value={location}
+              onChangeText={setLocation}
+              placeholder="Add location"
+              placeholderTextColor="#9CA3AF"
+            />
+          </View>
+          <View style={styles.fieldSeparator} />
+
+          <View style={styles.fieldRow}>
+            <Text style={styles.fieldLabel}>Date</Text>
+            <TextInput
+              style={styles.fieldValue}
+              value={date}
+              onChangeText={setDate}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor="#9CA3AF"
+            />
+          </View>
+        </View>
+
+        {/* Recent history */}
+        {(recentDates.length > 0 || recentLocations.length > 0 || recentEvents.length > 0) && (
+          <View style={styles.infoSection}>
+            <Text style={styles.sectionHeader}>Recent History</Text>
+
+            {recentDates.length > 0 && (
+              <View style={styles.historyRow}>
+                <Ionicons name="calendar-outline" size={16} color="#8B5CF6" style={styles.historyIcon} />
+                <Text style={styles.historyText}>{recentDates.join(', ')}</Text>
+              </View>
+            )}
+
+            {recentLocations.length > 0 && (
+              <View style={styles.historyRow}>
+                <Ionicons name="location-outline" size={16} color="#8B5CF6" style={styles.historyIcon} />
+                <Text style={styles.historyText}>{recentLocations.join(', ')}</Text>
+              </View>
+            )}
+
+            {recentEvents.length > 0 && (
+              <View style={styles.historyRow}>
+                <Ionicons name="flag-outline" size={16} color="#8B5CF6" style={styles.historyIcon} />
+                <Text style={styles.historyText}>{recentEvents.join(', ')}</Text>
+              </View>
+            )}
           </View>
         )}
 
-        {recentEvents.length > 0 && (
-          <View style={styles.recentItem}>
-            <Text style={styles.recentLabel}>Recent Events:</Text>
-            <Text style={styles.recentValue}>{recentEvents.join(', ')}</Text>
-          </View>
-        )}
-      </View>
+        {/* Facial details */}
+        {showFacialDetails && selectedPhoto?.facial_details && (
+          <View style={styles.infoSection}>
+            <Text style={styles.sectionHeader}>Facial Analysis</Text>
+            {(() => {
+              try {
+                const details = typeof selectedPhoto.facial_details === 'string'
+                  ? JSON.parse(selectedPhoto.facial_details)
+                  : selectedPhoto.facial_details;
 
-      {/* Added: Display facial analysis details if enabled in settings */}
-      {showFacialDetails && selectedPhoto?.facial_details && (
-        <View style={styles.facialDetailsSection}>
-          <Text style={styles.sectionTitle}>Facial Analysis</Text>
-          {(() => {
-            try {
-              const details = typeof selectedPhoto.facial_details === 'string' 
-                ? JSON.parse(selectedPhoto.facial_details) 
-                : selectedPhoto.facial_details;
-              
-              // Support new format: { success: true, data: { ... } }
-              const d = details?.data || details;
+                const d = details?.data || details;
 
-              if (!d || details?.success === false) {
-                return (
-                  <View style={styles.recentItem}>
-                    <Text style={styles.recentValue}>
+                if (!d || details?.success === false) {
+                  return (
+                    <Text style={styles.historyText}>
                       {details?.error || 'No facial analysis data available'}
                     </Text>
-                  </View>
-                );
-              }
+                  );
+                }
 
-              // Helper to render a detail row
-              const Row = ({ label, value }) => {
-                if (value === undefined || value === null || value === '') return null;
-                const displayVal = typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value);
-                return (
-                  <View style={styles.recentItem}>
-                    <Text style={styles.recentLabel}>{label}:</Text>
-                    <Text style={styles.recentValue}>{displayVal}</Text>
-                  </View>
-                );
-              };
-
-              return (
-                <>
-                  {/* Demographics */}
-                  <Text style={styles.faceDetailTitle}>Demographics</Text>
-                  <Row label="Gender" value={d.gender} />
-                  <Row label="Age Range" value={d.age_range} />
-                  <Row label="Age Estimate" value={d.age_estimate} />
-                  <Row label="Ethnicity" value={d.ethnicity} />
-
-                  {/* Emotion */}
-                  <Text style={styles.faceDetailTitle}>Emotion</Text>
-                  <Row label="Primary Emotion" value={d.primary_emotion} />
-                  <Row label="Secondary Emotion" value={d.secondary_emotion} />
-                  <Row label="Mood" value={d.mood} />
-                  <Row label="Smiling" value={d.smiling} />
-
-                  {/* Face Shape */}
-                  <Text style={styles.faceDetailTitle}>Face Structure</Text>
-                  <Row label="Face Shape" value={d.face_shape} />
-                  <Row label="Jawline" value={d.jawline_type} />
-                  <Row label="Chin" value={d.chin_type} />
-                  <Row label="Cheekbones" value={d.cheekbone_prominence} />
-                  <Row label="Forehead" value={d.forehead_width} />
-
-                  {/* Eyes */}
-                  <Text style={styles.faceDetailTitle}>Eyes</Text>
-                  <Row label="Eye Shape" value={d.eye_shape} />
-                  <Row label="Eye Color" value={typeof d.eye_color === 'string' ? d.eye_color : d.eye_color?.name} />
-                  <Row label="Eye Depth" value={d.eye_depth} />
-                  <Row label="Eye Spacing" value={d.eye_spacing} />
-                  <Row label="Eye Size" value={d.eye_size} />
-
-                  {/* Eyebrows */}
-                  <Text style={styles.faceDetailTitle}>Eyebrows</Text>
-                  <Row label="Shape" value={d.eyebrow_shape} />
-                  <Row label="Arch" value={d.eyebrow_arch_height} />
-                  <Row label="Thickness" value={d.eyebrow_thickness} />
-                  <Row label="Arched (CelebA)" value={d.arched_eyebrows} />
-                  <Row label="Bushy (CelebA)" value={d.bushy_eyebrows} />
-
-                  {/* Nose */}
-                  <Text style={styles.faceDetailTitle}>Nose</Text>
-                  <Row label="Shape" value={d.nose_shape} />
-                  <Row label="Bridge" value={d.nose_bridge} />
-                  <Row label="Tip" value={d.nose_tip_shape} />
-                  <Row label="Nostril Width" value={d.nostril_width} />
-
-                  {/* Lips & Mouth */}
-                  <Text style={styles.faceDetailTitle}>Lips & Mouth</Text>
-                  <Row label="Lip Fullness" value={d.lip_fullness} />
-                  <Row label="Lip Balance" value={d.lip_balance} />
-                  <Row label="Mouth Width" value={d.mouth_width} />
-                  <Row label="Cupid's Bow" value={d.cupids_bow} />
-                  <Row label="Lip Color" value={d.lip_color?.shade} />
-
-                  {/* Hair */}
-                  <Text style={styles.faceDetailTitle}>Hair</Text>
-                  <Row label="Hair Color" value={d.hair_color?.name || d.hair_color_celeba} />
-                  <Row label="Hair Texture" value={d.hair_texture || d.hair_texture_celeba} />
-                  <Row label="Hair Length" value={d.hair_length} />
-                  <Row label="Bangs" value={d.has_bangs} />
-                  <Row label="Bald" value={d.is_bald} />
-                  <Row label="Receding Hairline" value={d.receding_hairline} />
-
-                  {/* Facial Hair */}
-                  <Text style={styles.faceDetailTitle}>Facial Hair</Text>
-                  <Row label="Has Beard" value={d.has_beard} />
-                  {d.facial_hair && (
+                const Row = ({ label, value }) => {
+                  if (value === undefined || value === null || value === '') return null;
+                  const displayVal = typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value);
+                  return (
                     <>
-                      <Row label="Goatee" value={d.facial_hair.goatee} />
-                      <Row label="Mustache" value={d.facial_hair.mustache} />
-                      <Row label="Sideburns" value={d.facial_hair.sideburns} />
+                      <View style={styles.fieldRow}>
+                        <Text style={styles.fieldLabel}>{label}</Text>
+                        <Text style={styles.fieldValueText}>{displayVal}</Text>
+                      </View>
+                      <View style={styles.fieldSeparator} />
                     </>
-                  )}
+                  );
+                };
 
-                  {/* Skin */}
-                  <Text style={styles.faceDetailTitle}>Skin</Text>
-                  <Row label="Skin Tone" value={d.skin_tone?.fitzpatrick} />
-                  <Row label="Skin Hex" value={d.skin_tone?.hex_color} />
-                  <Row label="Undertone" value={d.skin_undertone} />
-                  <Row label="Wrinkles" value={d.wrinkle_level} />
-                  <Row label="Freckles/Moles" value={d.freckles_or_moles} />
-                  <Row label="Pale Skin" value={d.pale_skin} />
+                const SectionLabel = ({ children }) => (
+                  <Text style={styles.facialSubheader}>{children}</Text>
+                );
 
-                  {/* Accessories */}
-                  <Text style={styles.faceDetailTitle}>Accessories</Text>
-                  <Row label="Glasses" value={d.wearing_glasses || d.glasses_detected} />
-                  <Row label="Hat" value={d.wearing_hat || d.hat_detected} />
-                  <Row label="Earrings" value={d.wearing_earrings || d.earring_detected} />
-                  <Row label="Necklace" value={d.wearing_necklace || d.necklace_detected} />
-                  <Row label="Necktie" value={d.wearing_necktie} />
-                  <Row label="Heavy Makeup" value={d.heavy_makeup} />
-                  <Row label="Lipstick" value={d.wearing_lipstick} />
-                </>
-              );
-            } catch (error) {
-              return (
-                <View style={styles.recentItem}>
-                  <Text style={styles.recentValue}>Error parsing facial data</Text>
-                </View>
-              );
-            }
-          })()}
-        </View>
-      )}
+                return (
+                  <>
+                    <SectionLabel>Demographics</SectionLabel>
+                    <Row label="Gender" value={d.gender} />
+                    <Row label="Age Range" value={d.age_range} />
+                    <Row label="Age Estimate" value={d.age_estimate} />
+                    <Row label="Ethnicity" value={d.ethnicity} />
 
-      {/* Added: Delete button for individual photo records (only shown when multiple photos exist) */}
-      {selectedPhoto && records.length > 1 && (
-        <View style={styles.deleteSection}>
+                    <SectionLabel>Emotion</SectionLabel>
+                    <Row label="Primary Emotion" value={d.primary_emotion} />
+                    <Row label="Secondary Emotion" value={d.secondary_emotion} />
+                    <Row label="Mood" value={d.mood} />
+                    <Row label="Smiling" value={d.smiling} />
+
+                    <SectionLabel>Face Structure</SectionLabel>
+                    <Row label="Face Shape" value={d.face_shape} />
+                    <Row label="Jawline" value={d.jawline_type} />
+                    <Row label="Chin" value={d.chin_type} />
+                    <Row label="Cheekbones" value={d.cheekbone_prominence} />
+                    <Row label="Forehead" value={d.forehead_width} />
+
+                    <SectionLabel>Eyes</SectionLabel>
+                    <Row label="Eye Shape" value={d.eye_shape} />
+                    <Row label="Eye Color" value={typeof d.eye_color === 'string' ? d.eye_color : d.eye_color?.name} />
+                    <Row label="Eye Depth" value={d.eye_depth} />
+                    <Row label="Eye Spacing" value={d.eye_spacing} />
+                    <Row label="Eye Size" value={d.eye_size} />
+
+                    <SectionLabel>Eyebrows</SectionLabel>
+                    <Row label="Shape" value={d.eyebrow_shape} />
+                    <Row label="Arch" value={d.eyebrow_arch_height} />
+                    <Row label="Thickness" value={d.eyebrow_thickness} />
+                    <Row label="Arched (CelebA)" value={d.arched_eyebrows} />
+                    <Row label="Bushy (CelebA)" value={d.bushy_eyebrows} />
+
+                    <SectionLabel>Nose</SectionLabel>
+                    <Row label="Shape" value={d.nose_shape} />
+                    <Row label="Bridge" value={d.nose_bridge} />
+                    <Row label="Tip" value={d.nose_tip_shape} />
+                    <Row label="Nostril Width" value={d.nostril_width} />
+
+                    <SectionLabel>Lips & Mouth</SectionLabel>
+                    <Row label="Lip Fullness" value={d.lip_fullness} />
+                    <Row label="Lip Balance" value={d.lip_balance} />
+                    <Row label="Mouth Width" value={d.mouth_width} />
+                    <Row label="Cupid's Bow" value={d.cupids_bow} />
+                    <Row label="Lip Color" value={d.lip_color?.shade} />
+
+                    <SectionLabel>Hair</SectionLabel>
+                    <Row label="Hair Color" value={d.hair_color?.name || d.hair_color_celeba} />
+                    <Row label="Hair Texture" value={d.hair_texture || d.hair_texture_celeba} />
+                    <Row label="Hair Length" value={d.hair_length} />
+                    <Row label="Bangs" value={d.has_bangs} />
+                    <Row label="Bald" value={d.is_bald} />
+                    <Row label="Receding Hairline" value={d.receding_hairline} />
+
+                    <SectionLabel>Facial Hair</SectionLabel>
+                    <Row label="Has Beard" value={d.has_beard} />
+                    {d.facial_hair && (
+                      <>
+                        <Row label="Goatee" value={d.facial_hair.goatee} />
+                        <Row label="Mustache" value={d.facial_hair.mustache} />
+                        <Row label="Sideburns" value={d.facial_hair.sideburns} />
+                      </>
+                    )}
+
+                    <SectionLabel>Skin</SectionLabel>
+                    <Row label="Skin Tone" value={d.skin_tone?.fitzpatrick} />
+                    <Row label="Skin Hex" value={d.skin_tone?.hex_color} />
+                    <Row label="Undertone" value={d.skin_undertone} />
+                    <Row label="Wrinkles" value={d.wrinkle_level} />
+                    <Row label="Freckles/Moles" value={d.freckles_or_moles} />
+                    <Row label="Pale Skin" value={d.pale_skin} />
+
+                    <SectionLabel>Accessories</SectionLabel>
+                    <Row label="Glasses" value={d.wearing_glasses || d.glasses_detected} />
+                    <Row label="Hat" value={d.wearing_hat || d.hat_detected} />
+                    <Row label="Earrings" value={d.wearing_earrings || d.earring_detected} />
+                    <Row label="Necklace" value={d.wearing_necklace || d.necklace_detected} />
+                    <Row label="Necktie" value={d.wearing_necktie} />
+                    <Row label="Heavy Makeup" value={d.heavy_makeup} />
+                    <Row label="Lipstick" value={d.wearing_lipstick} />
+                  </>
+                );
+              } catch (error) {
+                return <Text style={styles.historyText}>Error parsing facial data</Text>;
+              }
+            })()}
+          </View>
+        )}
+
+        {/* Delete photo button (only when multiple photos) */}
+        {selectedPhoto && records.length > 1 && (
           <TouchableOpacity
-            onPress={() => handleDelete(selectedPhoto.id)}
-            style={styles.deleteButton}
+            onPress={() => handleDeletePhoto(selectedPhoto.id)}
+            style={styles.deletePhotoButton}
           >
-            <Ionicons name="trash-outline" size={18} color="#FF3B30" />
-            <Text style={styles.deleteButtonText}>Delete This Photo</Text>
+            <Ionicons name="image-outline" size={16} color="#EF4444" />
+            <Text style={styles.deleteText}>Delete This Photo</Text>
           </TouchableOpacity>
-        </View>
-      )}
+        )}
 
-      <View style={styles.spacer} />
+        {/* Delete entire contact */}
+        <TouchableOpacity
+          onPress={handleDeleteContact}
+          style={styles.deleteContactButton}
+        >
+          <Ionicons name="trash-outline" size={16} color="#EF4444" />
+          <Text style={styles.deleteText}>Delete Contact</Text>
+        </TouchableOpacity>
+
+        <View style={styles.spacer} />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f9f9f9',
-  },
-  // Safe area wrapper to avoid header overlap on Android (status bar)
   safeArea: {
     flex: 1,
-    backgroundColor: '#f9f9f9',
+    backgroundColor: '#fff',
   },
+  container: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  // Header
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 15,
-    paddingVertical: 15,
-    backgroundColor: '#fff',
+    paddingHorizontal: 8,
+    paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: '#F3F4F6',
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
+  headerButton: {
+    padding: 8,
   },
-  saveButton: {
+  saveText: {
     fontSize: 16,
-    color: '#007AFF',
     fontWeight: '600',
+    color: '#8B5CF6',
   },
-  photoSection: {
+
+  // Hero
+  heroSection: {
     alignItems: 'center',
-    paddingVertical: 20,
-    backgroundColor: '#fff',
-    marginBottom: 10,
+    paddingVertical: 28,
   },
-  mainPhoto: {
-    width: 200,
-    height: 200,
-    borderRadius: 10,
-    marginBottom: 10,
+  heroPhoto: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: '#F3F4F6',
+    marginBottom: 16,
   },
-  photoDate: {
-    fontSize: 12,
-    color: '#999',
+  heroPhotoPlaceholder: {
+    backgroundColor: '#EDE9FE',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  gallerySection: {
-    backgroundColor: '#fff',
-    paddingVertical: 15,
-    marginBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+  heroName: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1F2937',
   },
-  sectionTitle: {
+  heroTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-    paddingHorizontal: 15,
+    color: '#6B7280',
+    marginTop: 4,
+  },
+  heroDate: {
+    fontSize: 13,
+    color: '#9CA3AF',
+    marginTop: 4,
+  },
+
+  // Gallery
+  gallerySection: {
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  sectionHeader: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#9CA3AF',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    paddingHorizontal: 20,
     marginBottom: 12,
   },
   gallery: {
-    paddingHorizontal: 15,
+    paddingHorizontal: 20,
   },
   galleryItem: {
     marginRight: 10,
-    borderRadius: 8,
+    borderRadius: 10,
     overflow: 'hidden',
     borderWidth: 2,
     borderColor: 'transparent',
   },
   galleryItemSelected: {
-    borderColor: '#007AFF',
+    borderColor: '#8B5CF6',
   },
   galleryPhoto: {
-    width: 80,
-    height: 80,
+    width: 70,
+    height: 70,
   },
-  formSection: {
-    backgroundColor: '#fff',
-    paddingVertical: 15,
-    marginBottom: 10,
+
+  // Info fields
+  infoSection: {
+    paddingTop: 20,
+    paddingBottom: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: '#F3F4F6',
   },
-  formGroup: {
-    paddingHorizontal: 15,
-    marginBottom: 15,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
-  },
-  input: {
-    backgroundColor: '#f5f5f5',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    color: '#333',
-  },
-  recentSection: {
-    backgroundColor: '#fff',
-    paddingVertical: 15,
-    marginBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  recentItem: {
-    paddingHorizontal: 15,
-    marginBottom: 12,
-  },
-  recentLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#666',
-    marginBottom: 4,
-  },
-  recentValue: {
-    fontSize: 13,
-    color: '#333',
-    lineHeight: 18,
-  },
-  facialDetailsSection: {
-    backgroundColor: '#fff',
-    paddingVertical: 15,
-    marginBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  faceDetail: {
-    marginTop: 10,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
-  },
-  faceDetailTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#007AFF',
-    paddingHorizontal: 15,
-    marginBottom: 8,
-  },
-  deleteSection: {
-    backgroundColor: '#fff',
-    paddingVertical: 15,
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
-  },
-  deleteButton: {
+  fieldRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 12,
-    backgroundColor: '#fff3cd',
-    borderRadius: 8,
   },
-  deleteButtonText: {
-    marginLeft: 10,
+  fieldLabel: {
+    width: 90,
     fontSize: 14,
-    color: '#FF3B30',
-    fontWeight: '600',
+    color: '#6B7280',
   },
+  fieldValue: {
+    flex: 1,
+    fontSize: 15,
+    color: '#1F2937',
+    textAlign: 'right',
+  },
+  fieldValueText: {
+    flex: 1,
+    fontSize: 15,
+    color: '#1F2937',
+    textAlign: 'right',
+  },
+  fieldSeparator: {
+    height: 1,
+    backgroundColor: '#F3F4F6',
+    marginLeft: 20,
+  },
+
+  // Facial details
+  facialSubheader: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#8B5CF6',
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+
+  // History
+  historyRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+  },
+  historyIcon: {
+    marginRight: 10,
+    marginTop: 2,
+  },
+  historyText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#1F2937',
+    lineHeight: 20,
+  },
+
+  // Delete
+  deletePhotoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 20,
+    marginTop: 24,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FEE2E2',
+    backgroundColor: '#FEF2F2',
+  },
+  deleteContactButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 20,
+    marginTop: 12,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FEE2E2',
+    backgroundColor: '#fff',
+  },
+  deleteText: {
+    marginLeft: 8,
+    fontSize: 15,
+    color: '#EF4444',
+    fontWeight: '500',
+  },
+
   spacer: {
-    height: 20,
+    height: 40,
   },
 });

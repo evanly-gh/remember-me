@@ -1,45 +1,32 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { View, TextInput, StyleSheet, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-// Added: Supabase client for querying profiles from database
 import { supabase } from '../lib/supabase';
-// Added: Authentication context to get current user ID
 import { useAuth } from '../context/AuthContext';
-// Added: allow reloading when screen gains focus
 import { useFocusEffect } from '@react-navigation/native';
 
 export default function LookupScreen({ navigation }) {
-  // Added: State for search query to filter profiles by name
   const [searchQuery, setSearchQuery] = useState('');
-  // Added: State to store all unique profiles fetched from Supabase
   const [profiles, setProfiles] = useState([]);
-  // Added: Loading state while fetching data from database
   const [loading, setLoading] = useState(true);
-  // Added: Get current user ID from auth context
   const { user } = useAuth();
 
-  // Added: Load profiles on component mount and when user changes
   useEffect(() => {
-    if (user) {
-      loadProfiles();
-    }
+    if (user) loadProfiles();
   }, [user]);
 
-  // Added: Also reload when the screen becomes focused (ensures Lookup reflects edits)
   useFocusEffect(
-    React.useCallback(() => {
+    useCallback(() => {
       if (user) loadProfiles();
     }, [user])
   );
 
-  // Added: Function to fetch all records from Supabase and group by unique name
   const loadProfiles = async () => {
     if (!user) return;
 
     try {
       setLoading(true);
-      // Added: Query all records for current user, ordered by date (most recent first)
       const { data: allRecords, error } = await supabase
         .from('people')
         .select('*')
@@ -48,19 +35,15 @@ export default function LookupScreen({ navigation }) {
 
       if (error) throw error;
 
-      // Added: Group by name and keep only the most recent photo for each name
-      // This creates a unique profile per person showing their latest photo
       const uniqueProfiles = {};
       allRecords.forEach(record => {
-        if (!uniqueProfiles[record.name] || 
+        if (!uniqueProfiles[record.name] ||
             new Date(record.created_at) > new Date(uniqueProfiles[record.name].created_at)) {
           uniqueProfiles[record.name] = record;
         }
       });
 
-      // Added: Convert grouped object to array for mapping
-      const profilesArray = Object.values(uniqueProfiles);
-      setProfiles(profilesArray);
+      setProfiles(Object.values(uniqueProfiles));
     } catch (error) {
       console.error('Error loading profiles:', error);
     } finally {
@@ -68,299 +51,217 @@ export default function LookupScreen({ navigation }) {
     }
   };
 
-  // Added: Enhanced filter that searches by name AND facial attributes
   const filteredProfiles = profiles.filter(profile => {
     const query = searchQuery.toLowerCase();
-    
-    // Always match by name
-    if (profile.name.toLowerCase().includes(query)) {
-      return true;
-    }
-    
-    // Search in facial_details for attributes (new microservice format)
+
+    if (profile.name.toLowerCase().includes(query)) return true;
+
     if (profile.facial_details) {
       try {
-        const details = typeof profile.facial_details === 'string' 
-          ? JSON.parse(profile.facial_details) 
+        const details = typeof profile.facial_details === 'string'
+          ? JSON.parse(profile.facial_details)
           : profile.facial_details;
-        
-        // New format: { success: true, data: { ... } }
+
         const d = details?.data || details;
         if (d) {
-          // Match "smiling" or "smile" or "happy"
-          if ((query.includes('smil') || query.includes('happy')) && (d.smiling || d.smiling_celeba)) {
-            return true;
-          }
-          // Match "beard"
-          if (query.includes('beard') && d.has_beard) {
-            return true;
-          }
-          // Match emotions
-          if (d.primary_emotion && d.primary_emotion.toLowerCase().includes(query)) {
-            return true;
-          }
-          // Match "glasses" or "eyeglasses"
-          if (query.includes('glass') && (d.wearing_glasses || d.glasses_detected)) {
-            return true;
-          }
-          // Match gender
-          if (d.gender && d.gender.toLowerCase().includes(query)) {
-            return true;
-          }
-          // Match face shape
-          if (d.face_shape && d.face_shape.toLowerCase().includes(query)) {
-            return true;
-          }
-          // Match hair color
-          if (d.hair_color_celeba && d.hair_color_celeba.toLowerCase().includes(query)) {
-            return true;
-          }
-          if (d.hair_color?.name && d.hair_color.name.toLowerCase().includes(query)) {
-            return true;
-          }
-          // Match eye color
-          if (d.eye_color && typeof d.eye_color === 'string' && d.eye_color.toLowerCase().includes(query)) {
-            return true;
-          }
-          // Match ethnicity
-          if (d.ethnicity && d.ethnicity.toLowerCase().includes(query)) {
-            return true;
-          }
-          // Match age range
-          if (d.age_range && d.age_range.includes(query)) {
-            return true;
-          }
-          // Match hair length
-          if (d.hair_length && d.hair_length.toLowerCase().includes(query)) {
-            return true;
-          }
-          // Match eye shape
-          if (d.eye_shape && d.eye_shape.toLowerCase().includes(query)) {
-            return true;
-          }
-          // Match "hat"
-          if (query.includes('hat') && (d.wearing_hat || d.hat_detected)) {
-            return true;
-          }
-          // Match "bald"
-          if (query.includes('bald') && d.is_bald) {
-            return true;
-          }
-          // Match "young" / "old"
-          if (query.includes('young') && d.young) {
-            return true;
-          }
-          // Match jawline, nose, lip etc.
+          if ((query.includes('smil') || query.includes('happy')) && (d.smiling || d.smiling_celeba)) return true;
+          if (query.includes('beard') && d.has_beard) return true;
+          if (d.primary_emotion && d.primary_emotion.toLowerCase().includes(query)) return true;
+          if (query.includes('glass') && (d.wearing_glasses || d.glasses_detected)) return true;
+          if (d.gender && d.gender.toLowerCase().includes(query)) return true;
+          if (d.face_shape && d.face_shape.toLowerCase().includes(query)) return true;
+          if (d.hair_color_celeba && d.hair_color_celeba.toLowerCase().includes(query)) return true;
+          if (d.hair_color?.name && d.hair_color.name.toLowerCase().includes(query)) return true;
+          if (d.eye_color && typeof d.eye_color === 'string' && d.eye_color.toLowerCase().includes(query)) return true;
+          if (d.ethnicity && d.ethnicity.toLowerCase().includes(query)) return true;
+          if (d.age_range && d.age_range.includes(query)) return true;
+          if (d.hair_length && d.hair_length.toLowerCase().includes(query)) return true;
+          if (d.eye_shape && d.eye_shape.toLowerCase().includes(query)) return true;
+          if (query.includes('hat') && (d.wearing_hat || d.hat_detected)) return true;
+          if (query.includes('bald') && d.is_bald) return true;
+          if (query.includes('young') && d.young) return true;
           const textFields = ['jawline_type', 'chin_type', 'nose_shape', 'lip_fullness', 'eye_depth', 'eye_spacing', 'hair_texture', 'skin_undertone'];
           for (const field of textFields) {
-            if (d[field] && d[field].toLowerCase().includes(query)) {
-              return true;
-            }
+            if (d[field] && d[field].toLowerCase().includes(query)) return true;
           }
         }
       } catch (error) {
         console.error('Error parsing facial_details:', error);
       }
     }
-    
+
     return false;
   });
 
-  // Sort filtered profiles alphabetically when searching
   if (searchQuery.trim()) {
     filteredProfiles.sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  // Added: Parse facial_details JSON and extract gender and age_range for display
-  const getFacialDetails = (facialDetails) => {
-    if (!facialDetails) return { gender: '', ageRange: '', faceShape: '' };
-    
-    try {
-      const details = typeof facialDetails === 'string' 
-        ? JSON.parse(facialDetails) 
-        : facialDetails;
-      // New format: { success: true, data: { ... } }
-      const d = details?.data || details;
-      return {
-        gender: d?.gender || '',
-        ageRange: d?.age_range || '',
-        faceShape: d?.face_shape || '',
-      };
-    } catch (error) {
-      return { gender: '', ageRange: '', faceShape: '' };
-    }
-  };
-
-  // Added: Show loading spinner while fetching profiles from Supabase
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.container}>
-          <ActivityIndicator size="large" color="#007AFF" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#8B5CF6" />
         </View>
       </SafeAreaView>
     );
   }
 
-  // Added: Main render - wrap in SafeAreaView so search bar is reachable on all devices
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-      {/* Added: Search bar for filtering profiles by name */}
-      <View style={styles.searchContainer}>
-        <TextInput
-          style={styles.searchBar}
-          placeholder="Search..."
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-      </View>
-      {/* Added: Scrollable list of profiles with filtering */}
-      <ScrollView style={styles.content}>
-        {filteredProfiles.length === 0 ? (
-          // Added: Empty state when no profiles match search or no profiles exist
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No profiles yet. Start recording!</Text>
-          </View>
-        ) : (
-          // Added: Map through filtered profiles and display as cards
-          filteredProfiles.map((profile) => {
-            // Added: Extract facial details for display
-            const details = getFacialDetails(profile.facial_details);
-            // Added: Format facial details as readable text (e.g., "Male • 25-30 • Oval")
-            const description = [details.gender, details.ageRange, details.faceShape].filter(Boolean).join(' • ');
+        <Text style={styles.screenTitle}>Contacts</Text>
 
-            return (
-              // Added: Touchable card that navigates to EditProfileScreen
-              <TouchableOpacity 
-                key={profile.id} 
-                style={styles.card}
-                onPress={() => {
-                  navigation.navigate('EditProfile', { profileName: profile.name });
-                }}
+        {/* Search bar */}
+        <View style={styles.searchContainer}>
+          <Ionicons name="search" size={18} color="#9CA3AF" style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search..."
+            placeholderTextColor="#9CA3AF"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Contact list */}
+        <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
+          {filteredProfiles.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="people-outline" size={48} color="#D1D5DB" />
+              <Text style={styles.emptyText}>No contacts yet.</Text>
+              <Text style={styles.emptySubtext}>Tap + to add someone.</Text>
+            </View>
+          ) : (
+            filteredProfiles.map((profile) => (
+              <TouchableOpacity
+                key={profile.id}
+                style={styles.contactRow}
+                onPress={() => navigation.navigate('EditProfile', { profileName: profile.name })}
+                activeOpacity={0.6}
               >
-                {/* Added: Profile photo from Supabase Storage */}
-                <Image
-                  source={{ uri: profile.photo_url }}
-                  style={styles.cardImage}
-                />
-                {/* Added: Profile information section */}
-                <View style={styles.cardContent}>
-                  <Text style={styles.cardName}>{profile.name}</Text>
-                  {/* Added: Show title (relationship) if available */}
+                {profile.photo_url ? (
+                  <Image source={{ uri: profile.photo_url }} style={styles.contactPhoto} />
+                ) : (
+                  <View style={[styles.contactPhoto, styles.contactPhotoPlaceholder]}>
+                    <Ionicons name="person" size={22} color="#8B5CF6" />
+                  </View>
+                )}
+                <View style={styles.contactInfo}>
+                  <Text style={styles.contactName}>{profile.name}</Text>
                   {profile.title && (
-                    <Text style={styles.cardTitle}>{profile.title}</Text>
-                  )}
-                  {/* Added: Show gender and age from facial_details JSON */}
-                  {description && (
-                    <Text style={styles.cardDescription}>{description}</Text>
-                  )}
-                  {/* Added: Show event if available */}
-                  {profile.event && (
-                    <Text style={styles.cardSubtext}>Event: {profile.event}</Text>
-                  )}
-                  {/* Added: Show location if available */}
-                  {profile.location && (
-                    <Text style={styles.cardSubtext}>Location: {profile.location}</Text>
+                    <Text style={styles.contactTitle}>{profile.title}</Text>
                   )}
                 </View>
+                <Ionicons name="chevron-forward" size={18} color="#D1D5DB" />
               </TouchableOpacity>
-            );
-          })
-        )}
-      </ScrollView>
+            ))
+          )}
+        </ScrollView>
       </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  // Safe area wrapper to ensure search bar isn't obscured by status bar
   safeArea: {
     flex: 1,
     backgroundColor: '#fff',
   },
-  searchContainer: {
-    padding: 10,
-    backgroundColor: '#f5f5f5',
-    // ensure the input is tappable and visible
-    paddingTop: 6,
-  },
-  searchBar: {
-    height: 40,
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    paddingHorizontal: 15,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  content: {
+  container: {
     flex: 1,
-  },
-  card: {
-    flexDirection: 'row',
-    padding: 20,
-    marginHorizontal: 10,
-    marginTop: 10,
-    minHeight: 100,
     backgroundColor: '#fff',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
-  cardImage: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    marginRight: 15,
-    backgroundColor: '#f0f0f0',
-  },
-  cardContent: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  cardName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 5,
-    color: '#333',
-  },
-  cardTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#007AFF',
-    marginBottom: 5,
-  },
-  cardDescription: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 5,
-  },
-  cardSubtext: {
-    fontSize: 12,
-    color: '#999',
-    marginBottom: 2,
-  },
-  emptyState: {
+  loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
-    minHeight: 400,
+  },
+  screenTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#1F2937',
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 12,
+  },
+
+  // Search
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 20,
+    marginBottom: 12,
+    paddingHorizontal: 14,
+    height: 40,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 20,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: '#1F2937',
+  },
+
+  // List
+  list: {
+    flex: 1,
+  },
+  contactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  contactPhoto: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#F3F4F6',
+    marginRight: 14,
+  },
+  contactPhotoPlaceholder: {
+    backgroundColor: '#EDE9FE',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  contactInfo: {
+    flex: 1,
+  },
+  contactName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  contactTitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+
+  // Empty
+  emptyState: {
+    alignItems: 'center',
+    paddingTop: 80,
   },
   emptyText: {
-    fontSize: 16,
-    color: '#999',
-    textAlign: 'center',
+    fontSize: 17,
+    color: '#6B7280',
+    marginTop: 12,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    marginTop: 4,
   },
 });
