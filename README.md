@@ -477,7 +477,6 @@ If you want to use the Hugging Face Space for face analysis instead of your loca
 ```powershell
 $env:FACE_SERVICE_URL="https://evanlyhf-rememberme.hf.space"
 ```
-```
 
 Expected test:
 
