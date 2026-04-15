@@ -210,13 +210,11 @@ Notes:
 1. `FACE_SERVICE_URL` from process env
 2. Falls back to `http://localhost:8000`
 
-For local run in PowerShell (same terminal session):
+For a fresh clone, you do not need to set anything. Local development uses the built-in default:
 
-```powershell
-$env:FACE_SERVICE_URL="http://localhost:8000"
-```
+`http://localhost:8000`
 
-If using deployed Hugging Face Space:
+Only set this if you want Node to call the deployed Hugging Face Space instead:
 
 ```powershell
 $env:FACE_SERVICE_URL="https://evanlyhf-rememberme.hf.space"
@@ -471,10 +469,14 @@ Should return:
 
 ```powershell
 cd C:\Users\evanl\OneDrive\Documents\VSCode\HCP\server
-$env:FACE_SERVICE_URL="http://localhost:8000"
-OR
-$env:FACE_SERVICE_URL="https://evanlyhf-rememberme.hf.space"
 npm start
+```
+
+If you want to use the Hugging Face Space for face analysis instead of your local Python service, set `FACE_SERVICE_URL` before running `npm start`:
+
+```powershell
+$env:FACE_SERVICE_URL="https://evanlyhf-rememberme.hf.space"
+```
 ```
 
 Expected test:
