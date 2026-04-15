@@ -1,7 +1,7 @@
 fastapi==0.115.0
 uvicorn==0.30.0
 python-multipart==0.0.9
-mediapipe==0.10.33
+mediapipe==0.10.18
 torch==2.11.0
 torchvision
 Pillow==10.4.0
