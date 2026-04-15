@@ -21,22 +21,42 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 
+const DETAIL_FIELDS = [
+  { key: 'title', label: 'Relation', placeholder: 'e.g., Friend, Colleague', icon: 'person-outline' },
+  { key: 'event', label: 'Occasion', placeholder: 'e.g., Conference, Party', icon: 'calendar-outline' },
+  { key: 'location', label: 'Location', placeholder: 'City, State', icon: 'location-outline' },
+  { key: 'date', label: 'Date', placeholder: 'YYYY-MM-DD', icon: 'time-outline' },
+];
+
 export default function RecordScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [capturedPhoto, setCapturedPhoto] = useState(null);
   const [showCamera, setShowCamera] = useState(false);
   const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
   const [title, setTitle] = useState('');
   const [event, setEvent] = useState('');
   const [location, setLocation] = useState('');
   const [date, setDate] = useState('');
+  const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState(null);
   const [cameraFacing, setCameraFacing] = useState('back');
+  const [expandedChip, setExpandedChip] = useState(null);
   const cameraRef = useRef(null);
+  const chipInputRef = useRef(null);
+  const analysisPromiseRef = useRef(null);
   const { user } = useAuth();
   const { colors } = useTheme();
+
+  const detailValues = { title, event, location, date };
+  const detailSetters = {
+    title: setTitle,
+    event: setEvent,
+    location: setLocation,
+    date: setDate,
+  };
 
   // Intercept hardware/gesture back when camera is open
   useEffect(() => {
@@ -55,6 +75,13 @@ export default function RecordScreen() {
   useEffect(() => {
     getLocation();
   }, []);
+
+  // Auto-focus when chip expands
+  useEffect(() => {
+    if (expandedChip && chipInputRef.current) {
+      chipInputRef.current.focus();
+    }
+  }, [expandedChip]);
 
   const getLocation = async () => {
     try {
@@ -94,34 +121,36 @@ export default function RecordScreen() {
     }
   };
 
-  const analyzeFace = async (base64Image) => {
+  const analyzeFace = (base64Image) => {
     if (!process.env.EXPO_PUBLIC_FACE_ANALYSIS_URL) return;
 
     setIsAnalyzing(true);
     setAnalysis(null);
-    try {
-      const response = await fetch(process.env.EXPO_PUBLIC_FACE_ANALYSIS_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true',
-        },
-        body: JSON.stringify({ image: base64Image }),
+
+    const promise = fetch(process.env.EXPO_PUBLIC_FACE_ANALYSIS_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true',
+      },
+      body: JSON.stringify({ image: base64Image }),
+    })
+      .then((response) => {
+        if (!response.ok) return null;
+        return response.json();
+      })
+      .then((result) => result || null)
+      .catch((error) => {
+        console.warn('Face analysis failed:', error.message || error);
+        return null;
       });
 
-      if (!response.ok) {
-        setAnalysis(null);
-        return;
-      }
+    analysisPromiseRef.current = promise;
 
-      const result = await response.json();
-      setAnalysis(result || null);
-    } catch (error) {
-      console.warn('Face analysis failed:', error.message || error);
-      setAnalysis(null);
-    } finally {
+    promise.then((result) => {
+      setAnalysis(result);
       setIsAnalyzing(false);
-    }
+    });
   };
 
   const handleSave = async () => {
@@ -161,36 +190,61 @@ export default function RecordScreen() {
         photoUrl = publicUrlData.publicUrl;
       }
 
-      const { error: insertError } = await supabase
+      const { data: insertedData, error: insertError } = await supabase
         .from('people')
         .insert({
           user_id: user.id,
           name: name.trim(),
           photo_url: photoUrl,
+          phone: phone.trim() || null,
           title: title.trim() || null,
           event: event.trim() || null,
           location: location.trim() || null,
           date: date || null,
-          notes: '',
+          notes: notes.trim() || '',
           facial_details: analysis || null,
-        });
+        })
+        .select('id')
+        .single();
 
       if (insertError) throw insertError;
+
+      // If analysis is still running, update the record when it finishes
+      if (isAnalyzing && analysisPromiseRef.current) {
+        const pendingPromise = analysisPromiseRef.current;
+        pendingPromise.then(async (result) => {
+          if (result && insertedData?.id) {
+            await supabase
+              .from('people')
+              .update({ facial_details: result })
+              .eq('id', insertedData.id);
+          }
+        }).catch((err) => {
+          console.warn('Failed to backfill facial details:', err.message);
+        });
+      }
 
       Alert.alert('Saved', `${name.trim()} has been added to your contacts.`);
       setCapturedPhoto(null);
       setName('');
+      setPhone('');
       setTitle('');
       setEvent('');
       setLocation('');
+      setNotes('');
       setDate(new Date().toISOString().split('T')[0]);
       setAnalysis(null);
+      setExpandedChip(null);
       getLocation();
     } catch (error) {
       Alert.alert('Error', error.message || 'Failed to save contact');
     } finally {
       setLoading(false);
     }
+  };
+
+  const toggleChip = (key) => {
+    setExpandedChip(prev => prev === key ? null : key);
   };
 
   // Camera overlay
@@ -223,6 +277,8 @@ export default function RecordScreen() {
       </View>
     );
   }
+
+  const expandedField = expandedChip && DETAIL_FIELDS.find(f => f.key === expandedChip);
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
@@ -263,7 +319,7 @@ export default function RecordScreen() {
             )}
           </View>
 
-          {/* Form fields */}
+          {/* Primary fields */}
           <View style={styles.formSection}>
             <TextInput
               style={[styles.nameInput, { color: colors.text }]}
@@ -274,43 +330,90 @@ export default function RecordScreen() {
               editable={!loading}
             />
             <View style={[styles.separator, { backgroundColor: colors.border }]} />
-
             <TextInput
               style={[styles.fieldInput, { color: colors.text }]}
-              placeholder="Title (e.g., Friend, Colleague)"
+              placeholder="Phone"
               placeholderTextColor={colors.placeholder}
-              value={title}
-              onChangeText={setTitle}
+              value={phone}
+              onChangeText={setPhone}
+              keyboardType="phone-pad"
               editable={!loading}
             />
-            <View style={[styles.separator, { backgroundColor: colors.border }]} />
+          </View>
 
-            <TextInput
-              style={[styles.fieldInput, { color: colors.text }]}
-              placeholder="Event"
-              placeholderTextColor={colors.placeholder}
-              value={event}
-              onChangeText={setEvent}
-              editable={!loading}
-            />
-            <View style={[styles.separator, { backgroundColor: colors.border }]} />
+          {/* Detail chips */}
+          <View style={styles.chipsSection}>
+            <View style={styles.chipsRow}>
+              {DETAIL_FIELDS.map((field) => {
+                const value = detailValues[field.key];
+                const isFilled = !!value;
+                const isExpanded = expandedChip === field.key;
+                return (
+                  <TouchableOpacity
+                    key={field.key}
+                    style={[
+                      styles.chip,
+                      { borderColor: colors.border },
+                      isFilled && { backgroundColor: colors.accentLight, borderColor: colors.accentLight },
+                      isExpanded && { backgroundColor: colors.accent, borderColor: colors.accent },
+                    ]}
+                    onPress={() => toggleChip(field.key)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name={field.icon}
+                      size={14}
+                      color={isExpanded ? '#fff' : isFilled ? colors.accent : colors.textTertiary}
+                      style={styles.chipIcon}
+                    />
+                    <Text
+                      style={[
+                        styles.chipText,
+                        { color: isExpanded ? '#fff' : isFilled ? colors.accent : colors.textTertiary },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {isFilled ? value : field.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
 
-            <TextInput
-              style={[styles.fieldInput, { color: colors.text }]}
-              placeholder="Location"
-              placeholderTextColor={colors.placeholder}
-              value={location}
-              onChangeText={setLocation}
-              editable={!loading}
-            />
-            <View style={[styles.separator, { backgroundColor: colors.border }]} />
+            {/* Expanded chip input */}
+            {expandedField && (
+              <View style={[styles.chipInputContainer, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                <TextInput
+                  ref={chipInputRef}
+                  style={[styles.chipInput, { color: colors.text }]}
+                  placeholder={expandedField.placeholder}
+                  placeholderTextColor={colors.placeholder}
+                  value={detailValues[expandedField.key]}
+                  onChangeText={detailSetters[expandedField.key]}
+                  onSubmitEditing={() => setExpandedChip(null)}
+                  returnKeyType="done"
+                  editable={!loading}
+                />
+                <TouchableOpacity onPress={() => setExpandedChip(null)} style={styles.chipInputDone}>
+                  <Ionicons name="checkmark-circle" size={22} color={colors.accent} />
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
 
+          {/* Notes */}
+          <View style={styles.notesSection}>
             <TextInput
-              style={[styles.fieldInput, { color: colors.text }]}
-              placeholder="Date"
+              style={[
+                styles.notesInput,
+                { color: colors.text, backgroundColor: colors.inputBg, borderColor: colors.border },
+              ]}
+              placeholder="Add notes..."
               placeholderTextColor={colors.placeholder}
-              value={date}
-              onChangeText={setDate}
+              value={notes}
+              onChangeText={setNotes}
+              multiline
+              textAlignVertical="top"
               editable={!loading}
             />
           </View>
@@ -389,10 +492,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 
-  // Form
+  // Primary form
   formSection: {
     paddingHorizontal: 20,
-    marginBottom: 30,
+    marginBottom: 20,
   },
   nameInput: {
     fontSize: 20,
@@ -405,6 +508,65 @@ const styles = StyleSheet.create({
   },
   separator: {
     height: 1,
+  },
+
+  // Detail chips
+  chipsSection: {
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  chipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  chipIcon: {
+    marginRight: 5,
+  },
+  chipText: {
+    fontSize: 13,
+    fontWeight: '500',
+    maxWidth: 120,
+  },
+  chipInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+  },
+  chipInput: {
+    flex: 1,
+    fontSize: 15,
+    paddingVertical: 12,
+  },
+  chipInputDone: {
+    padding: 4,
+    marginLeft: 8,
+  },
+
+  // Notes
+  notesSection: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  notesInput: {
+    fontSize: 15,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 12,
+    minHeight: 100,
   },
 
   // Save button

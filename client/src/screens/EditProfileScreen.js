@@ -28,10 +28,12 @@ export default function EditProfileScreen({ route, navigation }) {
   const { colors } = useTheme();
 
   const [name, setName] = useState(profileName);
+  const [phone, setPhone] = useState('');
   const [title, setTitle] = useState('');
   const [event, setEvent] = useState('');
   const [location, setLocation] = useState('');
   const [date, setDate] = useState('');
+  const [notes, setNotes] = useState('');
   const [showFacialDetails, setShowFacialDetails] = useState(false);
 
   useEffect(() => {
@@ -70,10 +72,12 @@ export default function EditProfileScreen({ route, navigation }) {
       if (data && data.length > 0) {
         const mostRecent = data[0];
         setSelectedPhoto(mostRecent);
+        setPhone(mostRecent.phone || '');
         setTitle(mostRecent.title || '');
         setEvent(mostRecent.event || '');
         setLocation(mostRecent.location || '');
         setDate(mostRecent.date || '');
+        setNotes(mostRecent.notes || '');
       }
     } catch (error) {
       console.error('Error loading records:', error);
@@ -95,10 +99,12 @@ export default function EditProfileScreen({ route, navigation }) {
         .from('people')
         .update({
           name: name.trim(),
+          phone: phone.trim() || null,
           title: title.trim() || null,
           event: event.trim() || null,
           location: location.trim() || null,
           date: date || null,
+          notes: notes.trim() || '',
         })
         .eq('id', selectedPhoto.id);
 
@@ -261,19 +267,32 @@ export default function EditProfileScreen({ route, navigation }) {
           <View style={[styles.fieldSeparator, { backgroundColor: colors.border }]} />
 
           <View style={styles.fieldRow}>
-            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Title</Text>
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Phone</Text>
+            <TextInput
+              style={[styles.fieldValue, { color: colors.text }]}
+              value={phone}
+              onChangeText={setPhone}
+              placeholder="Add phone"
+              placeholderTextColor={colors.placeholder}
+              keyboardType="phone-pad"
+            />
+          </View>
+          <View style={[styles.fieldSeparator, { backgroundColor: colors.border }]} />
+
+          <View style={styles.fieldRow}>
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Relation</Text>
             <TextInput
               style={[styles.fieldValue, { color: colors.text }]}
               value={title}
               onChangeText={setTitle}
-              placeholder="Add title"
+              placeholder="Add relation"
               placeholderTextColor={colors.placeholder}
             />
           </View>
           <View style={[styles.fieldSeparator, { backgroundColor: colors.border }]} />
 
           <View style={styles.fieldRow}>
-            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Event</Text>
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Occasion</Text>
             <TextInput
               style={[styles.fieldValue, { color: colors.text }]}
               value={event}
@@ -304,6 +323,22 @@ export default function EditProfileScreen({ route, navigation }) {
               onChangeText={setDate}
               placeholder="YYYY-MM-DD"
               placeholderTextColor={colors.placeholder}
+            />
+          </View>
+        </View>
+
+        {/* Notes */}
+        <View style={[styles.infoSection, { borderBottomColor: colors.border }]}>
+          <Text style={[styles.sectionHeader, { color: colors.textTertiary }]}>Notes</Text>
+          <View style={styles.notesContainer}>
+            <TextInput
+              style={[styles.notesInput, { color: colors.text, backgroundColor: colors.inputBg }]}
+              value={notes}
+              onChangeText={setNotes}
+              placeholder="Add notes..."
+              placeholderTextColor={colors.placeholder}
+              multiline
+              textAlignVertical="top"
             />
           </View>
         </View>
@@ -607,6 +642,20 @@ const styles = StyleSheet.create({
   fieldSeparator: {
     height: 1,
     marginLeft: 20,
+  },
+
+  // Notes
+  notesContainer: {
+    paddingHorizontal: 20,
+    paddingBottom: 8,
+  },
+  notesInput: {
+    fontSize: 15,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 12,
+    minHeight: 100,
   },
 
   // Facial details
