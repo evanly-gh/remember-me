@@ -1,0 +1,13 @@
+fastapi==0.115.0
+uvicorn==0.30.0
+python-multipart==0.0.9
+mediapipe==0.10.18
+torch==2.11.0
+torchvision
+Pillow==10.4.0
+numpy==1.26.4
+opencv-python-headless==4.10.0.84
+huggingface-hub==0.23.2
+timm==1.0.3
+safetensors>=0.6.0
+transformers==4.45.2
