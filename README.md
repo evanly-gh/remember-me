@@ -210,11 +210,13 @@ Notes:
 1. `FACE_SERVICE_URL` from process env
 2. Falls back to `http://localhost:8000`
 
-For a fresh clone, you do not need to set anything. Local development uses the built-in default:
+For local run in PowerShell (same terminal session):
 
-`http://localhost:8000`
+```powershell
+$env:FACE_SERVICE_URL="http://localhost:8000"
+```
 
-Only set this if you want Node to call the deployed Hugging Face Space instead:
+If using deployed Hugging Face Space:
 
 ```powershell
 $env:FACE_SERVICE_URL="https://evanlyhf-rememberme.hf.space"
@@ -469,13 +471,8 @@ Should return:
 
 ```powershell
 cd C:\Users\evanl\OneDrive\Documents\VSCode\HCP\server
+$env:FACE_SERVICE_URL="http://localhost:8000"
 npm start
-```
-
-If you want to use the Hugging Face Space for face analysis instead of your local Python service, set `FACE_SERVICE_URL` before running `npm start`:
-
-```powershell
-$env:FACE_SERVICE_URL="https://evanlyhf-rememberme.hf.space"
 ```
 
 Expected test:
@@ -488,17 +485,3 @@ curl http://localhost:3000/hello
 
 cd C:\Users\evanl\OneDrive\Documents\VSCode\HCP\client
 npm start
-
-
-# Updating HF
-git clone https://huggingface.co/spaces/evanlyhf/RememberMe
-cd RememberMe
-Copy-Item -Path "C:\Users\evanl\OneDrive\Documents\VSCode\HCP\face-service\*" -Destination . -Recurse -Force -Exclude ".venv","__pycache__"
-# In app.py, ensure the main block runs on the correct port
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=7860)  # HF Spaces uses port 7860
-	
-git add .
-git commit -m "Push face-service to Hugging Face Space"
-git push

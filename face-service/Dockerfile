@@ -3,7 +3,7 @@ FROM python:3.11-slim
 # System deps for OpenCV and MediaPipe
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 wget \
-    libgles2-mesa libgomp1 \
+    libegl1 libgles2 libgomp1 \
     g++ && \
     rm -rf /var/lib/apt/lists/*
 

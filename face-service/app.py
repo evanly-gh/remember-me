@@ -50,6 +50,19 @@ emotion_analyzer: Optional[EmotionAnalyzer] = None
 color_analyzer: Optional[ColorAnalyzer] = None
 
 
+def _to_json_safe(value):
+    """Convert numpy scalars/arrays and nested structures into JSON-safe types."""
+    if isinstance(value, dict):
+        return {str(k): _to_json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_to_json_safe(v) for v in value]
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    return value
+
+
 def get_analyzers():
     """Lazy-load all analyzer models on first use."""
     global landmark_analyzer, demographic_analyzer, attribute_analyzer
@@ -172,7 +185,7 @@ async def analyze_face(file: UploadFile = File(...)):
         # Remove internal fields (prefixed with underscore)
         results = {k: v for k, v in results.items() if not k.startswith("_")}
 
-        return {"success": True, "data": results}
+        return {"success": True, "data": _to_json_safe(results)}
 
     except Exception as e:
         logger.error(f"Analysis failed: {e}", exc_info=True)
@@ -237,7 +250,7 @@ async def analyze_face_base64(body: dict):
 
         results = {k: v for k, v in results.items() if not k.startswith("_")}
 
-        return {"success": True, "data": results}
+        return {"success": True, "data": _to_json_safe(results)}
 
     except HTTPException:
         raise
