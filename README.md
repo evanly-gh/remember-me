@@ -447,16 +447,18 @@ If using deployed Hugging Face Space:
 ```powershell
 $env:FACE_SERVICE_URL="https://evanlyhf-rememberme.hf.space"
 ```
+Skip terminal A in part 7 if you do this.
 
 ## 7. Run the Project Locally (3 terminals)
 
-Open 3 terminals.
+Open 3 terminals for the face-service, client, and server
 
 ### Terminal A: Python face-service
+```powershell
 cd C:\Users\evanl\OneDrive\Documents\VSCode\HCP\face-service
 .\.venv\Scripts\Activate.ps1
 uvicorn app:app --host 0.0.0.0 --port 8000
-
+```
 
 Expected health check:
 curl http://localhost:8000/health
@@ -482,6 +484,7 @@ curl http://localhost:3000/hello
 ```
 
 ### Terminal C: Expo client
-
+```powershell
 cd C:\Users\evanl\OneDrive\Documents\VSCode\HCP\client
 npm start
+```
