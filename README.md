@@ -219,7 +219,7 @@ $env:FACE_SERVICE_URL="http://localhost:8000"
 If using deployed Hugging Face Space:
 
 ```powershell
-$env:FACE_SERVICE_URL="https://<your-space>.hf.space"
+$env:FACE_SERVICE_URL="https://evanlyhf-rememberme.hf.space"
 ```
 
 ## 7. Run the Project Locally (3 terminals)
@@ -380,3 +380,124 @@ set EXPO_PUBLIC_FACE_ANALYSIS_URL to your Node server URL
 npm start
 
 
+### 5.1 Install client deps
+
+```powershell
+cd client
+npm install
+```
+
+### 5.2 Install server deps
+
+```powershell
+cd ..\server
+npm install
+```
+
+### 5.3 Create Python virtual env and install face-service deps
+
+```powershell
+cd ..\face-service
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+If activation is blocked by execution policy:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
+```
+
+## 6. Environment Variables (skip if already set)
+## 6.1 Client env file (`client/.env`)
+
+Create `client/.env` (copy from `client/.env.example`) and set:
+
+```dotenv
+EXPO_PUBLIC_SUPABASE_URL=https://<your-project-ref>.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=<your-supabase-anon-key>
+EXPO_PUBLIC_FACE_ANALYSIS_URL=http://localhost:3000/analyze-face
+```
+
+Notes:
+1. Client talks to Node server, not directly to Python.
+2. If testing on a physical phone, `localhost` is your phone itself.
+	- Use your computer LAN IP instead, example:
+	- `http://192.168.1.25:3000/analyze-face`
+
+
+## 6.2 Server env variable (`FACE_SERVICE_URL`)
+
+`server/src/app.js` reads:
+
+1. `FACE_SERVICE_URL` from process env
+2. Falls back to `http://localhost:8000`
+
+For local run in PowerShell (same terminal session):
+
+```powershell
+$env:FACE_SERVICE_URL="http://localhost:8000"
+```
+
+If using deployed Hugging Face Space:
+
+```powershell
+$env:FACE_SERVICE_URL="https://evanlyhf-rememberme.hf.space"
+```
+
+## 7. Run the Project Locally (3 terminals)
+
+Open 3 terminals.
+
+### Terminal A: Python face-service
+cd C:\Users\evanl\OneDrive\Documents\VSCode\HCP\face-service
+.\.venv\Scripts\Activate.ps1
+uvicorn app:app --host 0.0.0.0 --port 8000
+
+
+Expected health check:
+curl http://localhost:8000/health
+
+Should return:
+
+```json
+{"status":"ok"}
+```
+
+### Terminal B: Node server
+
+```powershell
+cd C:\Users\evanl\OneDrive\Documents\VSCode\HCP\server
+$env:FACE_SERVICE_URL="http://localhost:8000"
+OR
+$env:FACE_SERVICE_URL="https://evanlyhf-rememberme.hf.space"
+npm start
+```
+
+Expected test:
+
+```powershell
+curl http://localhost:3000/hello
+```
+
+### Terminal C: Expo client
+
+cd C:\Users\evanl\OneDrive\Documents\VSCode\HCP\client
+npm start
+
+
+# Updating HF
+git clone https://huggingface.co/spaces/evanlyhf/RememberMe
+cd RememberMe
+Copy-Item -Path "C:\Users\evanl\OneDrive\Documents\VSCode\HCP\face-service\*" -Destination . -Recurse -Force -Exclude ".venv","__pycache__"
+# In app.py, ensure the main block runs on the correct port
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=7860)  # HF Spaces uses port 7860
+	
+git add .
+git commit -m "Push face-service to Hugging Face Space"
+git push
