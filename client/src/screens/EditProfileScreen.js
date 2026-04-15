@@ -16,6 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 
 export default function EditProfileScreen({ route, navigation }) {
   const { profileName } = route.params;
@@ -24,6 +25,7 @@ export default function EditProfileScreen({ route, navigation }) {
   const [saving, setSaving] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const { user } = useAuth();
+  const { colors } = useTheme();
 
   const [name, setName] = useState(profileName);
   const [title, setTitle] = useState('');
@@ -174,9 +176,9 @@ export default function EditProfileScreen({ route, navigation }) {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#8B5CF6" />
+          <ActivityIndicator size="large" color={colors.accent} />
         </View>
       </SafeAreaView>
     );
@@ -187,35 +189,35 @@ export default function EditProfileScreen({ route, navigation }) {
   const recentEvents = records.slice(0, 3).map(r => r.event).filter(Boolean);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { borderBottomColor: colors.border }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
-          <Ionicons name="chevron-back" size={24} color="#8B5CF6" />
+          <Ionicons name="chevron-back" size={24} color={colors.accent} />
         </TouchableOpacity>
         <TouchableOpacity onPress={handleSave} disabled={saving} style={styles.headerButton}>
           {saving ? (
-            <ActivityIndicator size="small" color="#8B5CF6" />
+            <ActivityIndicator size="small" color={colors.accent} />
           ) : (
-            <Text style={styles.saveText}>Save</Text>
+            <Text style={[styles.saveText, { color: colors.accent }]}>Save</Text>
           )}
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      <ScrollView style={[styles.container, { backgroundColor: colors.background }]} showsVerticalScrollIndicator={false}>
         {/* Hero section */}
         <View style={styles.heroSection}>
           {selectedPhoto?.photo_url ? (
-            <Image source={{ uri: selectedPhoto.photo_url }} style={styles.heroPhoto} />
+            <Image source={{ uri: selectedPhoto.photo_url }} style={[styles.heroPhoto, { backgroundColor: colors.inputBg }]} />
           ) : (
-            <View style={[styles.heroPhoto, styles.heroPhotoPlaceholder]}>
-              <Ionicons name="person" size={48} color="#8B5CF6" />
+            <View style={[styles.heroPhoto, styles.heroPhotoPlaceholder, { backgroundColor: colors.accentLight }]}>
+              <Ionicons name="person" size={48} color={colors.accent} />
             </View>
           )}
-          <Text style={styles.heroName}>{name}</Text>
-          {title ? <Text style={styles.heroTitle}>{title}</Text> : null}
+          <Text style={[styles.heroName, { color: colors.text }]}>{name}</Text>
+          {title ? <Text style={[styles.heroTitle, { color: colors.textSecondary }]}>{title}</Text> : null}
           {selectedPhoto?.created_at && (
-            <Text style={styles.heroDate}>
+            <Text style={[styles.heroDate, { color: colors.textTertiary }]}>
               {new Date(selectedPhoto.created_at).toLocaleDateString()}
             </Text>
           )}
@@ -223,8 +225,8 @@ export default function EditProfileScreen({ route, navigation }) {
 
         {/* Photo gallery */}
         {records.length > 1 && (
-          <View style={styles.gallerySection}>
-            <Text style={styles.sectionHeader}>Photos ({records.length})</Text>
+          <View style={[styles.gallerySection, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.sectionHeader, { color: colors.textTertiary }]}>Photos ({records.length})</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.gallery}>
               {records.map((record) => (
                 <TouchableOpacity
@@ -232,7 +234,7 @@ export default function EditProfileScreen({ route, navigation }) {
                   onPress={() => setSelectedPhoto(record)}
                   style={[
                     styles.galleryItem,
-                    selectedPhoto?.id === record.id && styles.galleryItemSelected,
+                    selectedPhoto?.id === record.id && [styles.galleryItemSelected, { borderColor: colors.accent }],
                   ]}
                 >
                   <Image source={{ uri: record.photo_url }} style={styles.galleryPhoto} />
@@ -243,92 +245,92 @@ export default function EditProfileScreen({ route, navigation }) {
         )}
 
         {/* Info fields */}
-        <View style={styles.infoSection}>
-          <Text style={styles.sectionHeader}>Information</Text>
+        <View style={[styles.infoSection, { borderBottomColor: colors.border }]}>
+          <Text style={[styles.sectionHeader, { color: colors.textTertiary }]}>Information</Text>
 
           <View style={styles.fieldRow}>
-            <Text style={styles.fieldLabel}>Name</Text>
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Name</Text>
             <TextInput
-              style={styles.fieldValue}
+              style={[styles.fieldValue, { color: colors.text }]}
               value={name}
               onChangeText={setName}
               placeholder="Name"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={colors.placeholder}
             />
           </View>
-          <View style={styles.fieldSeparator} />
+          <View style={[styles.fieldSeparator, { backgroundColor: colors.border }]} />
 
           <View style={styles.fieldRow}>
-            <Text style={styles.fieldLabel}>Title</Text>
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Title</Text>
             <TextInput
-              style={styles.fieldValue}
+              style={[styles.fieldValue, { color: colors.text }]}
               value={title}
               onChangeText={setTitle}
               placeholder="Add title"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={colors.placeholder}
             />
           </View>
-          <View style={styles.fieldSeparator} />
+          <View style={[styles.fieldSeparator, { backgroundColor: colors.border }]} />
 
           <View style={styles.fieldRow}>
-            <Text style={styles.fieldLabel}>Event</Text>
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Event</Text>
             <TextInput
-              style={styles.fieldValue}
+              style={[styles.fieldValue, { color: colors.text }]}
               value={event}
               onChangeText={setEvent}
               placeholder="Add event"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={colors.placeholder}
             />
           </View>
-          <View style={styles.fieldSeparator} />
+          <View style={[styles.fieldSeparator, { backgroundColor: colors.border }]} />
 
           <View style={styles.fieldRow}>
-            <Text style={styles.fieldLabel}>Location</Text>
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Location</Text>
             <TextInput
-              style={styles.fieldValue}
+              style={[styles.fieldValue, { color: colors.text }]}
               value={location}
               onChangeText={setLocation}
               placeholder="Add location"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={colors.placeholder}
             />
           </View>
-          <View style={styles.fieldSeparator} />
+          <View style={[styles.fieldSeparator, { backgroundColor: colors.border }]} />
 
           <View style={styles.fieldRow}>
-            <Text style={styles.fieldLabel}>Date</Text>
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Date</Text>
             <TextInput
-              style={styles.fieldValue}
+              style={[styles.fieldValue, { color: colors.text }]}
               value={date}
               onChangeText={setDate}
               placeholder="YYYY-MM-DD"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={colors.placeholder}
             />
           </View>
         </View>
 
         {/* Recent history */}
         {(recentDates.length > 0 || recentLocations.length > 0 || recentEvents.length > 0) && (
-          <View style={styles.infoSection}>
-            <Text style={styles.sectionHeader}>Recent History</Text>
+          <View style={[styles.infoSection, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.sectionHeader, { color: colors.textTertiary }]}>Recent History</Text>
 
             {recentDates.length > 0 && (
               <View style={styles.historyRow}>
-                <Ionicons name="calendar-outline" size={16} color="#8B5CF6" style={styles.historyIcon} />
-                <Text style={styles.historyText}>{recentDates.join(', ')}</Text>
+                <Ionicons name="calendar-outline" size={16} color={colors.accent} style={styles.historyIcon} />
+                <Text style={[styles.historyText, { color: colors.text }]}>{recentDates.join(', ')}</Text>
               </View>
             )}
 
             {recentLocations.length > 0 && (
               <View style={styles.historyRow}>
-                <Ionicons name="location-outline" size={16} color="#8B5CF6" style={styles.historyIcon} />
-                <Text style={styles.historyText}>{recentLocations.join(', ')}</Text>
+                <Ionicons name="location-outline" size={16} color={colors.accent} style={styles.historyIcon} />
+                <Text style={[styles.historyText, { color: colors.text }]}>{recentLocations.join(', ')}</Text>
               </View>
             )}
 
             {recentEvents.length > 0 && (
               <View style={styles.historyRow}>
-                <Ionicons name="flag-outline" size={16} color="#8B5CF6" style={styles.historyIcon} />
-                <Text style={styles.historyText}>{recentEvents.join(', ')}</Text>
+                <Ionicons name="flag-outline" size={16} color={colors.accent} style={styles.historyIcon} />
+                <Text style={[styles.historyText, { color: colors.text }]}>{recentEvents.join(', ')}</Text>
               </View>
             )}
           </View>
@@ -336,8 +338,8 @@ export default function EditProfileScreen({ route, navigation }) {
 
         {/* Facial details */}
         {showFacialDetails && selectedPhoto?.facial_details && (
-          <View style={styles.infoSection}>
-            <Text style={styles.sectionHeader}>Facial Analysis</Text>
+          <View style={[styles.infoSection, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.sectionHeader, { color: colors.textTertiary }]}>Facial Analysis</Text>
             {(() => {
               try {
                 const details = typeof selectedPhoto.facial_details === 'string'
@@ -348,7 +350,7 @@ export default function EditProfileScreen({ route, navigation }) {
 
                 if (!d || details?.success === false) {
                   return (
-                    <Text style={styles.historyText}>
+                    <Text style={[styles.historyText, { color: colors.text, paddingHorizontal: 20 }]}>
                       {details?.error || 'No facial analysis data available'}
                     </Text>
                   );
@@ -360,16 +362,16 @@ export default function EditProfileScreen({ route, navigation }) {
                   return (
                     <>
                       <View style={styles.fieldRow}>
-                        <Text style={styles.fieldLabel}>{label}</Text>
-                        <Text style={styles.fieldValueText}>{displayVal}</Text>
+                        <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>{label}</Text>
+                        <Text style={[styles.fieldValueText, { color: colors.text }]}>{displayVal}</Text>
                       </View>
-                      <View style={styles.fieldSeparator} />
+                      <View style={[styles.fieldSeparator, { backgroundColor: colors.border }]} />
                     </>
                   );
                 };
 
                 const SectionLabel = ({ children }) => (
-                  <Text style={styles.facialSubheader}>{children}</Text>
+                  <Text style={[styles.facialSubheader, { color: colors.accent }]}>{children}</Text>
                 );
 
                 return (
@@ -457,7 +459,7 @@ export default function EditProfileScreen({ route, navigation }) {
                   </>
                 );
               } catch (error) {
-                return <Text style={styles.historyText}>Error parsing facial data</Text>;
+                return <Text style={[styles.historyText, { color: colors.text, paddingHorizontal: 20 }]}>Error parsing facial data</Text>;
               }
             })()}
           </View>
@@ -467,20 +469,20 @@ export default function EditProfileScreen({ route, navigation }) {
         {selectedPhoto && records.length > 1 && (
           <TouchableOpacity
             onPress={() => handleDeletePhoto(selectedPhoto.id)}
-            style={styles.deletePhotoButton}
+            style={[styles.deletePhotoButton, { borderColor: colors.destructiveBorder, backgroundColor: colors.destructiveBg }]}
           >
-            <Ionicons name="image-outline" size={16} color="#EF4444" />
-            <Text style={styles.deleteText}>Delete This Photo</Text>
+            <Ionicons name="image-outline" size={16} color={colors.destructive} />
+            <Text style={[styles.deleteText, { color: colors.destructive }]}>Delete This Photo</Text>
           </TouchableOpacity>
         )}
 
         {/* Delete entire contact */}
         <TouchableOpacity
           onPress={handleDeleteContact}
-          style={styles.deleteContactButton}
+          style={[styles.deleteContactButton, { borderColor: colors.destructiveBorder, backgroundColor: colors.destructiveCardBg }]}
         >
-          <Ionicons name="trash-outline" size={16} color="#EF4444" />
-          <Text style={styles.deleteText}>Delete Contact</Text>
+          <Ionicons name="trash-outline" size={16} color={colors.destructive} />
+          <Text style={[styles.deleteText, { color: colors.destructive }]}>Delete Contact</Text>
         </TouchableOpacity>
 
         <View style={styles.spacer} />
@@ -492,11 +494,9 @@ export default function EditProfileScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   container: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   loadingContainer: {
     flex: 1,
@@ -512,7 +512,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
   },
   headerButton: {
     padding: 8,
@@ -520,7 +519,6 @@ const styles = StyleSheet.create({
   saveText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#8B5CF6',
   },
 
   // Hero
@@ -532,27 +530,22 @@ const styles = StyleSheet.create({
     width: 140,
     height: 140,
     borderRadius: 70,
-    backgroundColor: '#F3F4F6',
     marginBottom: 16,
   },
   heroPhotoPlaceholder: {
-    backgroundColor: '#EDE9FE',
     justifyContent: 'center',
     alignItems: 'center',
   },
   heroName: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#1F2937',
   },
   heroTitle: {
     fontSize: 16,
-    color: '#6B7280',
     marginTop: 4,
   },
   heroDate: {
     fontSize: 13,
-    color: '#9CA3AF',
     marginTop: 4,
   },
 
@@ -560,12 +553,10 @@ const styles = StyleSheet.create({
   gallerySection: {
     paddingBottom: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
   },
   sectionHeader: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#9CA3AF',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     paddingHorizontal: 20,
@@ -581,9 +572,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'transparent',
   },
-  galleryItemSelected: {
-    borderColor: '#8B5CF6',
-  },
+  galleryItemSelected: {},
   galleryPhoto: {
     width: 70,
     height: 70,
@@ -594,7 +583,6 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
   },
   fieldRow: {
     flexDirection: 'row',
@@ -605,23 +593,19 @@ const styles = StyleSheet.create({
   fieldLabel: {
     width: 90,
     fontSize: 14,
-    color: '#6B7280',
   },
   fieldValue: {
     flex: 1,
     fontSize: 15,
-    color: '#1F2937',
     textAlign: 'right',
   },
   fieldValueText: {
     flex: 1,
     fontSize: 15,
-    color: '#1F2937',
     textAlign: 'right',
   },
   fieldSeparator: {
     height: 1,
-    backgroundColor: '#F3F4F6',
     marginLeft: 20,
   },
 
@@ -629,7 +613,6 @@ const styles = StyleSheet.create({
   facialSubheader: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#8B5CF6',
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 4,
@@ -649,7 +632,6 @@ const styles = StyleSheet.create({
   historyText: {
     flex: 1,
     fontSize: 14,
-    color: '#1F2937',
     lineHeight: 20,
   },
 
@@ -663,8 +645,6 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#FEE2E2',
-    backgroundColor: '#FEF2F2',
   },
   deleteContactButton: {
     flexDirection: 'row',
@@ -675,13 +655,10 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#FEE2E2',
-    backgroundColor: '#fff',
   },
   deleteText: {
     marginLeft: 8,
     fontSize: 15,
-    color: '#EF4444',
     fontWeight: '500',
   },
 

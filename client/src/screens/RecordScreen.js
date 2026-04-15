@@ -19,6 +19,7 @@ import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 
 export default function RecordScreen() {
   const [permission, requestPermission] = useCameraPermissions();
@@ -35,6 +36,7 @@ export default function RecordScreen() {
   const [cameraFacing, setCameraFacing] = useState('back');
   const cameraRef = useRef(null);
   const { user } = useAuth();
+  const { colors } = useTheme();
 
   // Intercept hardware/gesture back when camera is open
   useEffect(() => {
@@ -223,22 +225,22 @@ export default function RecordScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.flex}
       >
         <ScrollView
-          style={styles.container}
+          style={[styles.container, { backgroundColor: colors.background }]}
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          <Text style={styles.screenTitle}>New Contact</Text>
+          <Text style={[styles.screenTitle, { color: colors.text }]}>New Contact</Text>
 
           {/* Photo placeholder */}
           <View style={styles.photoSection}>
             <TouchableOpacity
-              style={styles.photoPlaceholder}
+              style={[styles.photoPlaceholder, { backgroundColor: colors.accentLight }]}
               onPress={handlePhotoPress}
               activeOpacity={0.7}
             >
@@ -253,60 +255,60 @@ export default function RecordScreen() {
                   </TouchableOpacity>
                 </>
               ) : (
-                <Ionicons name="camera" size={36} color="#8B5CF6" />
+                <Ionicons name="camera" size={36} color={colors.accent} />
               )}
             </TouchableOpacity>
             {isAnalyzing && (
-              <Text style={styles.analyzingText}>Analyzing...</Text>
+              <Text style={[styles.analyzingText, { color: colors.textTertiary }]}>Analyzing...</Text>
             )}
           </View>
 
           {/* Form fields */}
           <View style={styles.formSection}>
             <TextInput
-              style={styles.nameInput}
+              style={[styles.nameInput, { color: colors.text }]}
               placeholder="Name"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={colors.placeholder}
               value={name}
               onChangeText={setName}
               editable={!loading}
             />
-            <View style={styles.separator} />
+            <View style={[styles.separator, { backgroundColor: colors.border }]} />
 
             <TextInput
-              style={styles.fieldInput}
+              style={[styles.fieldInput, { color: colors.text }]}
               placeholder="Title (e.g., Friend, Colleague)"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={colors.placeholder}
               value={title}
               onChangeText={setTitle}
               editable={!loading}
             />
-            <View style={styles.separator} />
+            <View style={[styles.separator, { backgroundColor: colors.border }]} />
 
             <TextInput
-              style={styles.fieldInput}
+              style={[styles.fieldInput, { color: colors.text }]}
               placeholder="Event"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={colors.placeholder}
               value={event}
               onChangeText={setEvent}
               editable={!loading}
             />
-            <View style={styles.separator} />
+            <View style={[styles.separator, { backgroundColor: colors.border }]} />
 
             <TextInput
-              style={styles.fieldInput}
+              style={[styles.fieldInput, { color: colors.text }]}
               placeholder="Location"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={colors.placeholder}
               value={location}
               onChangeText={setLocation}
               editable={!loading}
             />
-            <View style={styles.separator} />
+            <View style={[styles.separator, { backgroundColor: colors.border }]} />
 
             <TextInput
-              style={styles.fieldInput}
+              style={[styles.fieldInput, { color: colors.text }]}
               placeholder="Date"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={colors.placeholder}
               value={date}
               onChangeText={setDate}
               editable={!loading}
@@ -337,11 +339,9 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   container: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   scrollContent: {
     paddingBottom: 40,
@@ -349,7 +349,6 @@ const styles = StyleSheet.create({
   screenTitle: {
     fontSize: 28,
     fontWeight: '700',
-    color: '#1F2937',
     paddingHorizontal: 20,
     paddingTop: 10,
     paddingBottom: 20,
@@ -364,7 +363,6 @@ const styles = StyleSheet.create({
     width: 160,
     height: 160,
     borderRadius: 80,
-    backgroundColor: '#EDE9FE',
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
@@ -389,7 +387,6 @@ const styles = StyleSheet.create({
   analyzingText: {
     marginTop: 8,
     fontSize: 12,
-    color: '#9CA3AF',
   },
 
   // Form
@@ -400,17 +397,14 @@ const styles = StyleSheet.create({
   nameInput: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#1F2937',
     paddingVertical: 14,
   },
   fieldInput: {
     fontSize: 16,
-    color: '#1F2937',
     paddingVertical: 14,
   },
   separator: {
     height: 1,
-    backgroundColor: '#F3F4F6',
   },
 
   // Save button

@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { useFocusEffect } from '@react-navigation/native';
 
 export default function LookupScreen({ navigation }) {
@@ -11,6 +12,7 @@ export default function LookupScreen({ navigation }) {
   const [profiles, setProfiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
+  const { colors } = useTheme();
 
   useEffect(() => {
     if (user) loadProfiles();
@@ -99,32 +101,32 @@ export default function LookupScreen({ navigation }) {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#8B5CF6" />
+          <ActivityIndicator size="large" color={colors.accent} />
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        <Text style={styles.screenTitle}>Contacts</Text>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <Text style={[styles.screenTitle, { color: colors.text }]}>Contacts</Text>
 
         {/* Search bar */}
-        <View style={styles.searchContainer}>
-          <Ionicons name="search" size={18} color="#9CA3AF" style={styles.searchIcon} />
+        <View style={[styles.searchContainer, { backgroundColor: colors.inputBg }]}>
+          <Ionicons name="search" size={18} color={colors.placeholder} style={styles.searchIcon} />
           <TextInput
-            style={styles.searchInput}
+            style={[styles.searchInput, { color: colors.text }]}
             placeholder="Search..."
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={colors.placeholder}
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+              <Ionicons name="close-circle" size={18} color={colors.placeholder} />
             </TouchableOpacity>
           )}
         </View>
@@ -133,32 +135,32 @@ export default function LookupScreen({ navigation }) {
         <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
           {filteredProfiles.length === 0 ? (
             <View style={styles.emptyState}>
-              <Ionicons name="people-outline" size={48} color="#D1D5DB" />
-              <Text style={styles.emptyText}>No contacts yet.</Text>
-              <Text style={styles.emptySubtext}>Tap + to add someone.</Text>
+              <Ionicons name="people-outline" size={48} color={colors.border} />
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No contacts yet.</Text>
+              <Text style={[styles.emptySubtext, { color: colors.textTertiary }]}>Tap + to add someone.</Text>
             </View>
           ) : (
             filteredProfiles.map((profile) => (
               <TouchableOpacity
                 key={profile.id}
-                style={styles.contactRow}
+                style={[styles.contactRow, { borderBottomColor: colors.border }]}
                 onPress={() => navigation.navigate('EditProfile', { profileName: profile.name })}
                 activeOpacity={0.6}
               >
                 {profile.photo_url ? (
-                  <Image source={{ uri: profile.photo_url }} style={styles.contactPhoto} />
+                  <Image source={{ uri: profile.photo_url }} style={[styles.contactPhoto, { backgroundColor: colors.inputBg }]} />
                 ) : (
-                  <View style={[styles.contactPhoto, styles.contactPhotoPlaceholder]}>
-                    <Ionicons name="person" size={22} color="#8B5CF6" />
+                  <View style={[styles.contactPhoto, styles.contactPhotoPlaceholder, { backgroundColor: colors.accentLight }]}>
+                    <Ionicons name="person" size={22} color={colors.accent} />
                   </View>
                 )}
                 <View style={styles.contactInfo}>
-                  <Text style={styles.contactName}>{profile.name}</Text>
+                  <Text style={[styles.contactName, { color: colors.text }]}>{profile.name}</Text>
                   {profile.title && (
-                    <Text style={styles.contactTitle}>{profile.title}</Text>
+                    <Text style={[styles.contactTitle, { color: colors.textSecondary }]}>{profile.title}</Text>
                   )}
                 </View>
-                <Ionicons name="chevron-forward" size={18} color="#D1D5DB" />
+                <Ionicons name="chevron-forward" size={18} color={colors.border} />
               </TouchableOpacity>
             ))
           )}
@@ -171,11 +173,9 @@ export default function LookupScreen({ navigation }) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   container: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   loadingContainer: {
     flex: 1,
@@ -185,7 +185,6 @@ const styles = StyleSheet.create({
   screenTitle: {
     fontSize: 28,
     fontWeight: '700',
-    color: '#1F2937',
     paddingHorizontal: 20,
     paddingTop: 10,
     paddingBottom: 12,
@@ -199,7 +198,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     paddingHorizontal: 14,
     height: 40,
-    backgroundColor: '#F3F4F6',
     borderRadius: 20,
   },
   searchIcon: {
@@ -208,7 +206,6 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 15,
-    color: '#1F2937',
   },
 
   // List
@@ -221,17 +218,14 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
   },
   contactPhoto: {
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: '#F3F4F6',
     marginRight: 14,
   },
   contactPhotoPlaceholder: {
-    backgroundColor: '#EDE9FE',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -241,11 +235,9 @@ const styles = StyleSheet.create({
   contactName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1F2937',
   },
   contactTitle: {
     fontSize: 14,
-    color: '#6B7280',
     marginTop: 2,
   },
 
@@ -256,12 +248,10 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 17,
-    color: '#6B7280',
     marginTop: 12,
   },
   emptySubtext: {
     fontSize: 14,
-    color: '#9CA3AF',
     marginTop: 4,
   },
 });

@@ -1,4 +1,4 @@
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { View, ActivityIndicator } from 'react-native';
 
 import { AuthProvider, useAuth } from './src/context/AuthContext';
+import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import RecordScreen from './src/screens/RecordScreen';
 import LookupScreen from './src/screens/LookupScreen';
 import EditProfileScreen from './src/screens/EditProfileScreen';
@@ -16,11 +17,12 @@ const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
 function ContactsStack() {
+  const { colors } = useTheme();
   return (
     <Stack.Navigator
       screenOptions={{
         headerShown: true,
-        cardStyle: { backgroundColor: '#fff' },
+        contentStyle: { backgroundColor: colors.background },
       }}
     >
       <Stack.Screen
@@ -39,11 +41,12 @@ function ContactsStack() {
 
 function MainNavigator() {
   const { user, loading } = useAuth();
+  const { colors, isDark } = useTheme();
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
-        <ActivityIndicator size="large" color="#8B5CF6" />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
@@ -56,11 +59,11 @@ function MainNavigator() {
     <Tab.Navigator
       initialRouteName="Contacts"
       screenOptions={({ route }) => ({
-        tabBarActiveTintColor: '#8B5CF6',
-        tabBarInactiveTintColor: '#9CA3AF',
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.textTertiary,
         tabBarStyle: {
-          backgroundColor: '#fff',
-          borderTopColor: '#F3F4F6',
+          backgroundColor: colors.card,
+          borderTopColor: colors.border,
         },
         tabBarIcon: ({ focused, color, size }) => {
           let iconName;
@@ -94,18 +97,44 @@ function MainNavigator() {
       <Tab.Screen
         name="Settings"
         component={SettingsScreen}
+        options={{
+          headerStyle: { backgroundColor: colors.card },
+          headerTintColor: colors.text,
+        }}
       />
     </Tab.Navigator>
   );
 }
 
+function AppInner() {
+  const { colors, isDark } = useTheme();
+
+  const navTheme = {
+    ...(isDark ? DarkTheme : DefaultTheme),
+    colors: {
+      ...(isDark ? DarkTheme.colors : DefaultTheme.colors),
+      primary: colors.accent,
+      background: colors.background,
+      card: colors.card,
+      text: colors.text,
+      border: colors.border,
+    },
+  };
+
+  return (
+    <NavigationContainer theme={navTheme}>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <MainNavigator />
+    </NavigationContainer>
+  );
+}
+
 export default function App() {
   return (
-    <AuthProvider>
-      <NavigationContainer>
-        <StatusBar style="auto" />
-        <MainNavigator />
-      </NavigationContainer>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <AppInner />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
