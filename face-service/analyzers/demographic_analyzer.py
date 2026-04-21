@@ -1,13 +1,13 @@
 """
 Public pretrained demographic classifiers.
 
-This replaces the broken private FairFace weight download with public HF models:
-- Age: dima806/fairface_age_image_detection
-- Gender: dima806/fairface_gender_image_detection
-- Race: NikhilJaddu/fairface-race-vit
+Models used (all public, with published accuracy):
+- Age:       dima806/fairface_age_image_detection   (~59% top-1 on FairFace age buckets)
+- Gender:    dima806/fairface_gender_image_detection (~93.4% on FairFace)
+- Ethnicity: cledoux42/Ethnicity_Test_v003          (ViT, 79.6% accuracy, macro-F1 0.797)
 
-The output remains compatible with the rest of the app, but predictions come
-from real pretrained weights instead of random fallback values.
+The ethnicity model replaces the former NikhilJaddu/fairface-race-vit checkpoint,
+which had no published performance metrics on the HF model card.
 """
 
 from typing import Any
@@ -18,10 +18,13 @@ from transformers import pipeline
 
 AGE_MODEL_ID = "dima806/fairface_age_image_detection"
 GENDER_MODEL_ID = "dima806/fairface_gender_image_detection"
-RACE_MODEL_ID = "NikhilJaddu/fairface-race-vit"
+RACE_MODEL_ID = "cledoux42/Ethnicity_Test_v003"
 
 AGE_LABELS = ["0-2", "3-9", "10-19", "20-29", "30-39", "40-49", "50-59", "60-69", "70+"]
 GENDER_LABELS = ["Male", "Female"]
+# cledoux42/Ethnicity_Test_v003 outputs 5 classes: african, asian, caucasian, hispanic, indian.
+# We keep the legacy 7-bucket schema internally so the rest of the app still works;
+# unseen buckets simply stay at 0.0 in the distribution.
 RACE_LABELS = ["White", "Black", "Latino_Hispanic", "East Asian", "Southeast Asian", "Indian", "Middle Eastern"]
 
 
@@ -97,6 +100,7 @@ class DemographicAnalyzer:
     def _normalize_race_label(label: str) -> str:
         normalized = label.strip().lower().replace("-", "_")
         race_aliases = {
+            # Original FairFace 7-class labels
             "white": "White",
             "black": "Black",
             "latino_hispanic": "Latino_Hispanic",
@@ -105,6 +109,11 @@ class DemographicAnalyzer:
             "southeast asian": "Southeast Asian",
             "indian": "Indian",
             "middle eastern": "Middle Eastern",
+            # cledoux42/Ethnicity_Test_v003 5-class labels → map into our schema
+            "african": "Black",
+            "asian": "East Asian",
+            "caucasian": "White",
+            "hispanic": "Latino_Hispanic",
         }
         return race_aliases.get(normalized, label)
 

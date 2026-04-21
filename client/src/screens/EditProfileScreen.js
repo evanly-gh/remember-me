@@ -491,6 +491,16 @@ export default function EditProfileScreen({ route, navigation }) {
                     <Row label="Necktie" value={d.wearing_necktie} />
                     <Row label="Heavy Makeup" value={d.heavy_makeup} />
                     <Row label="Lipstick" value={d.wearing_lipstick} />
+
+                    <SectionLabel>Analysis Models</SectionLabel>
+                    <Row label="Landmarks" value="MediaPipe Face Landmarker — 478 3D landmarks + 52 blendshapes (Google)" />
+                    <Row label="Age" value="dima806/fairface_age_image_detection — ViT, ~59% top-1 on FairFace buckets" />
+                    <Row label="Gender" value="dima806/fairface_gender_image_detection — ViT, ~93.4% accuracy" />
+                    <Row label="Ethnicity" value="cledoux42/Ethnicity_Test_v003 — ViT, 79.6% accuracy, macro-F1 0.797" />
+                    <Row label="Attributes" value="openai/clip-vit-base-patch32 — zero-shot CLIP for ~30 facial attributes" />
+                    <Row label="Face Parsing" value="matei-dorian/segformer-b5-finetuned-human-parsing — mIoU 0.6258, Face IoU 0.829, Hair IoU 0.817" />
+                    <Row label="Emotion" value="HSEmotion (EfficientNet-B0) — 8-class, ~66.5% on AffectNet-8" />
+                    <Row label="Color" value="Pixel-level LAB/HSV/K-means analysis (no AI model)" />
                   </>
                 );
               } catch (error) {

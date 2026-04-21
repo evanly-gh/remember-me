@@ -164,7 +164,7 @@ async def analyze_face(file: UploadFile = File(...)):
 
         # Step 4: BiSeNet → pixel segmentation → hair length, wrinkles, spots
         logger.info("Running face parsing...")
-        parse_results = parsing.analyze(img_bgr)
+        parse_results = parsing.analyze(img_array)
         results.update(parse_results)
 
         # Step 5: HSEmotion → emotion classification
@@ -234,7 +234,7 @@ async def analyze_face_base64(body: dict):
         attr_results = attributes.analyze(img_array)
         results.update(attr_results)
 
-        parse_results = parsing.analyze(img_bgr)
+        parse_results = parsing.analyze(img_array)
         results.update(parse_results)
 
         emo_results = emotions.analyze(img_array)
