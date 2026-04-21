@@ -28,7 +28,7 @@ const DETAIL_FIELDS = [
   { key: 'date', label: 'Date', placeholder: 'YYYY-MM-DD', icon: 'time-outline' },
 ];
 
-export default function RecordScreen() {
+export default function RecordScreen({ navigation }) {
   const [permission, requestPermission] = useCameraPermissions();
   const [capturedPhoto, setCapturedPhoto] = useState(null);
   const [showCamera, setShowCamera] = useState(false);
@@ -200,7 +200,12 @@ export default function RecordScreen() {
           });
       }
 
-      Alert.alert('Saved', `${name.trim()} has been added to your contacts.`);
+      Alert.alert('Saved', `${name.trim()} has been added to your contacts.`, [
+        {
+          text: 'OK',
+          onPress: () => navigation.navigate('Contacts'),
+        },
+      ]);
       setCapturedPhoto(null);
       setPhotoBase64(null);
       setName('');
