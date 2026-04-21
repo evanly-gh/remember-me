@@ -1,110 +1,152 @@
 """
-FairFace ResNet-34 — Age, gender, and race estimation.
+Public pretrained demographic classifiers.
 
-The FairFace model was trained on ~100k balanced images across
-7 race groups, 9 age buckets, and 2 genders. It's one of the
-most widely used fair demographic classifiers.
+Models used (all public, with published accuracy):
+- Age:       dima806/fairface_age_image_detection   (~59% top-1 on FairFace age buckets)
+- Gender:    dima806/fairface_gender_image_detection (~93.4% on FairFace)
+- Ethnicity: cledoux42/Ethnicity_Test_v003          (ViT, 79.6% accuracy, macro-F1 0.797)
 
-Downloads the model from HuggingFace Hub on first use.
+The ethnicity model replaces the former NikhilJaddu/fairface-race-vit checkpoint,
+which had no published performance metrics on the HF model card.
 """
 
-import os
 from typing import Any
 
-import numpy as np
-import torch
-import torch.nn as nn
-from huggingface_hub import hf_hub_download
 from PIL import Image
-from torchvision import models, transforms
+from transformers import pipeline
 
-FAIRFACE_REPO = "joshualin24/FairFace"
-FAIRFACE_FILE = "res34_fair_align_multi_7_20190809.pt"
+
+AGE_MODEL_ID = "dima806/fairface_age_image_detection"
+GENDER_MODEL_ID = "dima806/fairface_gender_image_detection"
+RACE_MODEL_ID = "cledoux42/Ethnicity_Test_v003"
 
 AGE_LABELS = ["0-2", "3-9", "10-19", "20-29", "30-39", "40-49", "50-59", "60-69", "70+"]
 GENDER_LABELS = ["Male", "Female"]
+# cledoux42/Ethnicity_Test_v003 outputs 5 classes: african, asian, caucasian, hispanic, indian.
+# We keep the legacy 7-bucket schema internally so the rest of the app still works;
+# unseen buckets simply stay at 0.0 in the distribution.
 RACE_LABELS = ["White", "Black", "Latino_Hispanic", "East Asian", "Southeast Asian", "Indian", "Middle Eastern"]
-
-TRANSFORM = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-])
 
 
 class DemographicAnalyzer:
     def __init__(self):
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model = self._load_model()
+        self.age_classifier = self._load_classifier(AGE_MODEL_ID)
+        self.gender_classifier = self._load_classifier(GENDER_MODEL_ID)
+        self.race_classifier = self._load_classifier(RACE_MODEL_ID)
 
-    def _load_model(self) -> nn.Module:
-        """Load FairFace ResNet-34 with 3 classification heads."""
-        model = models.resnet34(weights=None)
-
-        # FairFace uses 3 separate FC heads
-        model.fc = nn.Linear(model.fc.in_features, 18)  # 9 age + 2 gender + 7 race
-
-        # Try to download weights from HuggingFace
+    @staticmethod
+    def _load_classifier(model_id: str):
         try:
-            weight_path = hf_hub_download(
-                repo_id=FAIRFACE_REPO,
-                filename=FAIRFACE_FILE,
-            )
-            state_dict = torch.load(weight_path, map_location=self.device, weights_only=True)
-            # Handle different state dict formats
-            if "model_state_dict" in state_dict:
-                state_dict = state_dict["model_state_dict"]
-            model.load_state_dict(state_dict, strict=False)
-        except Exception as e:
-            print(f"[DemographicAnalyzer] Could not load FairFace weights: {e}")
-            print("[DemographicAnalyzer] Using random weights — predictions will be inaccurate")
+            return pipeline("image-classification", model=model_id)
+        except Exception as exc:
+            print(f"[DemographicAnalyzer] Failed to load '{model_id}': {exc}")
+            return None
 
-        model.to(self.device).eval()
-        return model
-
-    def analyze(self, img_rgb: np.ndarray) -> dict[str, Any]:
+    def analyze(self, img_rgb) -> dict[str, Any]:
         pil = Image.fromarray(img_rgb)
-        tensor = TRANSFORM(pil).unsqueeze(0).to(self.device)
 
-        with torch.no_grad():
-            out = self.model(tensor)
+        age_predictions = self._safe_predict(self.age_classifier, pil, top_k=3)
+        gender_predictions = self._safe_predict(self.gender_classifier, pil, top_k=2)
+        race_predictions = self._safe_predict(self.race_classifier, pil, top_k=7)
 
-        logits = out[0].cpu().numpy()
+        if not age_predictions and not gender_predictions and not race_predictions:
+            return {
+                "age_range": "unknown",
+                "age_estimate": 0.0,
+                "age_confidence": 0.0,
+                "gender": "unknown",
+                "gender_confidence": 0.0,
+                "ethnicity": "unknown",
+                "ethnicity_confidence": 0.0,
+                "age_distribution": {label: 0.0 for label in AGE_LABELS},
+                "ethnicity_distribution": {label: 0.0 for label in RACE_LABELS},
+            }
 
-        # Split logits into age (9), gender (2), race (7)
-        age_logits = logits[:9]
-        gender_logits = logits[9:11]
-        race_logits = logits[11:18]
+        age_prediction = age_predictions[0] if age_predictions else {"label": "unknown", "score": 0.0}
+        gender_prediction = gender_predictions[0] if gender_predictions else {"label": "unknown", "score": 0.0}
+        race_prediction = race_predictions[0] if race_predictions else {"label": "unknown", "score": 0.0}
 
-        age_probs = self._softmax(age_logits)
-        gender_probs = self._softmax(gender_logits)
-        race_probs = self._softmax(race_logits)
-
-        age_idx = int(np.argmax(age_probs))
-        gender_idx = int(np.argmax(gender_probs))
-        race_idx = int(np.argmax(race_probs))
-
-        # Calculate weighted age estimate
-        age_midpoints = [1, 6, 14.5, 24.5, 34.5, 44.5, 54.5, 64.5, 75]
-        age_estimate = float(np.dot(age_probs, age_midpoints))
+        age_label = self._normalize_age_label(age_prediction["label"])
+        gender_label = self._normalize_gender_label(gender_prediction["label"])
+        race_label = self._normalize_race_label(race_prediction["label"])
 
         return {
-            "age_range": AGE_LABELS[age_idx],
-            "age_estimate": round(age_estimate, 1),
-            "age_confidence": round(float(age_probs[age_idx]), 3),
-            "gender": GENDER_LABELS[gender_idx].lower(),
-            "gender_confidence": round(float(gender_probs[gender_idx]), 3),
-            "ethnicity": RACE_LABELS[race_idx],
-            "ethnicity_confidence": round(float(race_probs[race_idx]), 3),
-            "age_distribution": {
-                label: round(float(p), 3) for label, p in zip(AGE_LABELS, age_probs)
-            },
-            "ethnicity_distribution": {
-                label: round(float(p), 3) for label, p in zip(RACE_LABELS, race_probs)
-            },
+            "age_range": age_label,
+            "age_estimate": self._age_estimate_from_label(age_label),
+            "age_confidence": round(float(age_prediction["score"]), 3),
+            "gender": gender_label.lower(),
+            "gender_confidence": round(float(gender_prediction["score"]), 3),
+            "ethnicity": race_label,
+            "ethnicity_confidence": round(float(race_prediction["score"]), 3),
+            "age_distribution": self._distribution_map(age_predictions, self._normalize_age_label, AGE_LABELS),
+            "ethnicity_distribution": self._distribution_map(race_predictions, self._normalize_race_label, RACE_LABELS),
         }
 
     @staticmethod
-    def _softmax(x: np.ndarray) -> np.ndarray:
-        e = np.exp(x - np.max(x))
-        return e / e.sum()
+    def _normalize_age_label(label: str) -> str:
+        normalized = label.strip().lower()
+        if normalized == "more than 70":
+            return "70+"
+        return AGE_LABELS[AGE_LABELS.index(label)] if label in AGE_LABELS else label
+
+    @staticmethod
+    def _normalize_gender_label(label: str) -> str:
+        normalized = label.strip().lower()
+        if normalized in {"male", "female"}:
+            return normalized.capitalize()
+        return label
+
+    @staticmethod
+    def _normalize_race_label(label: str) -> str:
+        normalized = label.strip().lower().replace("-", "_")
+        race_aliases = {
+            # Original FairFace 7-class labels
+            "white": "White",
+            "black": "Black",
+            "latino_hispanic": "Latino_Hispanic",
+            "latino hispanic": "Latino_Hispanic",
+            "east asian": "East Asian",
+            "southeast asian": "Southeast Asian",
+            "indian": "Indian",
+            "middle eastern": "Middle Eastern",
+            # cledoux42/Ethnicity_Test_v003 5-class labels → map into our schema
+            "african": "Black",
+            "asian": "East Asian",
+            "caucasian": "White",
+            "hispanic": "Latino_Hispanic",
+        }
+        return race_aliases.get(normalized, label)
+
+    @staticmethod
+    def _age_estimate_from_label(label: str) -> float:
+        mapping = {
+            "0-2": 1.0,
+            "3-9": 6.0,
+            "10-19": 14.5,
+            "20-29": 24.5,
+            "30-39": 34.5,
+            "40-49": 44.5,
+            "50-59": 54.5,
+            "60-69": 64.5,
+            "70+": 75.0,
+        }
+        return mapping.get(label, 0.0)
+
+    @classmethod
+    def _distribution_map(cls, predictions, normalizer, all_labels):
+        distribution = {label: 0.0 for label in all_labels}
+        for prediction in predictions:
+            normalized_label = normalizer(prediction["label"])
+            if normalized_label in distribution:
+                distribution[normalized_label] = round(float(prediction["score"]), 3)
+        return distribution
+
+    @staticmethod
+    def _safe_predict(classifier, image, top_k: int):
+        if classifier is None:
+            return []
+        try:
+            return classifier(image, top_k=top_k)
+        except Exception as exc:
+            print(f"[DemographicAnalyzer] Prediction failed: {exc}")
+            return []

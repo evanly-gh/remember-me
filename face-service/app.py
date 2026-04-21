@@ -50,6 +50,19 @@ emotion_analyzer: Optional[EmotionAnalyzer] = None
 color_analyzer: Optional[ColorAnalyzer] = None
 
 
+def _to_json_safe(value):
+    """Convert numpy scalars/arrays and nested structures into JSON-safe types."""
+    if isinstance(value, dict):
+        return {str(k): _to_json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_to_json_safe(v) for v in value]
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    return value
+
+
 def get_analyzers():
     """Lazy-load all analyzer models on first use."""
     global landmark_analyzer, demographic_analyzer, attribute_analyzer
@@ -86,6 +99,20 @@ def get_analyzers():
         emotion_analyzer,
         color_analyzer,
     )
+
+
+@app.get("/")
+async def root():
+    """Root endpoint — returns API information."""
+    return {
+        "name": "HCP Face Analysis Service",
+        "version": "2.0.0",
+        "status": "running",
+        "endpoints": {
+            "health": "/health",
+            "analyze": "/analyze"
+        }
+    }
 
 
 @app.get("/health")
@@ -137,7 +164,7 @@ async def analyze_face(file: UploadFile = File(...)):
 
         # Step 4: BiSeNet → pixel segmentation → hair length, wrinkles, spots
         logger.info("Running face parsing...")
-        parse_results = parsing.analyze(img_bgr)
+        parse_results = parsing.analyze(img_array)
         results.update(parse_results)
 
         # Step 5: HSEmotion → emotion classification
@@ -147,20 +174,18 @@ async def analyze_face(file: UploadFile = File(...)):
 
         # Step 6: Color analysis using masks from Step 4 + landmarks from Step 1
         logger.info("Running color analysis...")
-        landmark_data = landmark_results.get("_raw_landmarks")
-        print(type(landmark_data))
         color_results = colors.analyze(
             img_array,
             skin_mask=parse_results.get("_skin_mask"),
             hair_mask=parse_results.get("_hair_mask"),
-            landmarks=landmark_data,
+            landmarks=landmark_results.get("_raw_landmarks"),
         )
         results.update(color_results)
 
         # Remove internal fields (prefixed with underscore)
         results = {k: v for k, v in results.items() if not k.startswith("_")}
 
-        return {"success": True, "data": results}
+        return {"success": True, "data": _to_json_safe(results)}
 
     except Exception as e:
         logger.error(f"Analysis failed: {e}", exc_info=True)
@@ -209,25 +234,23 @@ async def analyze_face_base64(body: dict):
         attr_results = attributes.analyze(img_array)
         results.update(attr_results)
 
-        parse_results = parsing.analyze(img_bgr)
+        parse_results = parsing.analyze(img_array)
         results.update(parse_results)
 
         emo_results = emotions.analyze(img_array)
         results.update(emo_results)
 
-        landmark_data = landmark_results.get("_raw_landmarks")
-        print(type(landmark_data))
         color_results = colors.analyze(
             img_array,
             skin_mask=parse_results.get("_skin_mask"),
             hair_mask=parse_results.get("_hair_mask"),
-            landmarks=landmark_data,
+            landmarks=landmark_results.get("_raw_landmarks"),
         )
         results.update(color_results)
 
         results = {k: v for k, v in results.items() if not k.startswith("_")}
 
-        return {"success": True, "data": results}
+        return {"success": True, "data": _to_json_safe(results)}
 
     except HTTPException:
         raise

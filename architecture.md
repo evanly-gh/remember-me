@@ -10,13 +10,13 @@ Since the codebase is flexible and can use more languages and frameworks, we go 
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                     CURRENT STACK                         │
+│                     CURRENT STACK                        │
 │  Next.js Frontend ──► Supabase (Auth, DB, Storage)       │
 └──────────────┬───────────────────────────────────────────┘
                │
                ▼
 ┌──────────────────────────────────────────────────────────┐
-│          NEW: Python Face Analysis Microservice           │
+│          NEW: Python Face Analysis Microservice          │
 │  (Railway.app / Render.com / Hugging Face Spaces)        │
 │  FREE TIER: 512MB RAM, shared CPU                        │
 │                                                          │

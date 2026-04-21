@@ -1,47 +1,92 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, TextInput, Alert, ActivityIndicator, ScrollView } from 'react-native';
+import { useState, useRef, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Image,
+  TextInput,
+  Alert,
+  ActivityIndicator,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  BackHandler,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-// Added: Location service for reverse geocoding to auto-populate location
 import * as Location from 'expo-location';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
+
+const DETAIL_FIELDS = [
+  { key: 'title', label: 'Relation', placeholder: 'e.g., Friend, Colleague', icon: 'person-outline' },
+  { key: 'event', label: 'Occasion', placeholder: 'e.g., Conference, Party', icon: 'calendar-outline' },
+  { key: 'location', label: 'Location', placeholder: 'City, State', icon: 'location-outline' },
+  { key: 'date', label: 'Date', placeholder: 'YYYY-MM-DD', icon: 'time-outline' },
+];
 
 export default function RecordScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [capturedPhoto, setCapturedPhoto] = useState(null);
-  const [photoText, setPhotoText] = useState('');
-  // Added: State for event field (editable user input)
+  const [showCamera, setShowCamera] = useState(false);
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [title, setTitle] = useState('');
   const [event, setEvent] = useState('');
-  // Added: State for location field (auto-populated via reverse geocoding)
   const [location, setLocation] = useState('');
-  // Added: State for date field (auto-populated with today's date)
   const [date, setDate] = useState('');
+  const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
-  // Analysis state: whether remote face analysis is running and its result
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState(null);
+  const [cameraFacing, setCameraFacing] = useState('back');
+  const [expandedChip, setExpandedChip] = useState(null);
   const cameraRef = useRef(null);
+  const chipInputRef = useRef(null);
+  const analysisPromiseRef = useRef(null);
   const { user } = useAuth();
+  const { colors } = useTheme();
 
-  // Added: Auto-populate date field with today's date when component mounts
+  const detailValues = { title, event, location, date };
+  const detailSetters = {
+    title: setTitle,
+    event: setEvent,
+    location: setLocation,
+    date: setDate,
+  };
+
+  // Intercept hardware/gesture back when camera is open
   useEffect(() => {
-    const today = new Date().toISOString().split('T')[0];
-    setDate(today);
+    if (!showCamera) return;
+    const handler = BackHandler.addEventListener('hardwareBackPress', () => {
+      setShowCamera(false);
+      return true;
+    });
+    return () => handler.remove();
+  }, [showCamera]);
+
+  useEffect(() => {
+    setDate(new Date().toISOString().split('T')[0]);
   }, []);
 
-  // Added: Auto-populate location field using reverse geocoding when component mounts
   useEffect(() => {
     getLocation();
   }, []);
 
-  // Added: Function to get current device location and reverse-geocode to city/region
+  // Auto-focus when chip expands
+  useEffect(() => {
+    if (expandedChip && chipInputRef.current) {
+      chipInputRef.current.focus();
+    }
+  }, [expandedChip]);
+
   const getLocation = async () => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        console.log('Location permission denied');
-        return;
-      }
+      if (status !== 'granted') return;
 
       const currentLocation = await Location.getCurrentPositionAsync();
       const [locationData] = await Location.reverseGeocodeAsync({
@@ -50,306 +95,521 @@ export default function RecordScreen() {
       });
 
       const address = `${locationData.city || ''}, ${locationData.region || ''}`.replace(/^, |, $/g, '');
-      setLocation(address || 'Location unavailable');
+      setLocation(address || '');
     } catch (error) {
       console.log('Could not fetch location:', error.message);
-      setLocation('');
     }
-  }
+  };
 
-  if (!permission) {
-    return <View style={styles.container} />;
-  }
+  const handlePhotoPress = async () => {
+    if (!permission?.granted) {
+      const result = await requestPermission();
+      if (!result.granted) {
+        Alert.alert('Permission Required', 'Camera access is needed to take photos.');
+        return;
+      }
+    }
+    setShowCamera(true);
+  };
 
-  if (!permission.granted) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.message}>We need your permission to show the camera</Text>
-        <TouchableOpacity style={styles.button} onPress={requestPermission}>
-          <Text style={styles.buttonText}>Grant Permission</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  // Take a photo from the camera. set captured URI and trigger optional analysis.
   const takePicture = async () => {
     if (cameraRef.current) {
-      const photo = await cameraRef.current.takePictureAsync({
-        base64: true,
-      });
+      const photo = await cameraRef.current.takePictureAsync({ base64: true });
       setCapturedPhoto(photo.uri);
-      // Run face analysis asynchronously (won't block UI)
+      setShowCamera(false);
       analyzeFace(photo.base64);
     }
   };
 
-  // Added: Analyze face using remote API (optional - won't block app if unavailable)
-  const analyzeFace = async (base64Image) => {
-    // Skip analysis if URL not configured
-    if (!process.env.EXPO_PUBLIC_FACE_ANALYSIS_URL) {
-      console.log('Face analysis URL not configured, skipping analysis');
-      return;
-    }
+  const analyzeFace = (base64Image) => {
+    if (!process.env.EXPO_PUBLIC_FACE_ANALYSIS_URL) return;
 
     setIsAnalyzing(true);
     setAnalysis(null);
-    try {
-      const response = await fetch(process.env.EXPO_PUBLIC_FACE_ANALYSIS_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true',
-        },
-        body: JSON.stringify({ image: base64Image }),
+
+    const promise = fetch(process.env.EXPO_PUBLIC_FACE_ANALYSIS_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true',
+      },
+      body: JSON.stringify({ image: base64Image }),
+    })
+      .then((response) => {
+        if (!response.ok) return null;
+        return response.json();
+      })
+      .then((result) => result || null)
+      .catch((error) => {
+        console.warn('Face analysis failed:', error.message || error);
+        return null;
       });
 
-      if (!response.ok) {
-        console.warn(`Face analysis returned status ${response.status}`);
-        setAnalysis(null);
-        return;
-      }
+    analysisPromiseRef.current = promise;
 
-      // Expect JSON result from analysis service
-      const result = await response.json();
-      setAnalysis(result || null);
-    } catch (error) {
-      // Log error but don't crash app - face analysis is optional
-      console.warn('Face analysis failed (app will continue):', error.message || error);
-      setAnalysis(null);
-    } finally {
+    promise.then((result) => {
+      setAnalysis(result);
       setIsAnalyzing(false);
-    }
+    });
   };
 
-  // Added: Reset all form fields when user wants to retake photo
-  const handleRetake = () => {
-    setCapturedPhoto(null);
-    setPhotoText('');
-    // Added: Reset event and location fields
-    setEvent('');
-    setLocation('');
-    // Added: Reset date to today
-    setDate(new Date().toISOString().split('T')[0]);
-  };
-
-  // Added: Enhanced submit handler that saves photo and all metadata to Supabase
-  const handleSubmit = async () => {
+  const handleSave = async () => {
     if (!user) {
-      Alert.alert('Error', 'You must be logged in to submit');
+      Alert.alert('Error', 'You must be logged in');
       return;
     }
 
-    if (!photoText.trim()) {
-      Alert.alert('Error', 'Please add a name for this person');
+    if (!name.trim()) {
+      Alert.alert('Name Required', 'Please enter a name for this contact.');
       return;
     }
 
     setLoading(true);
 
     try {
-      // 1. Read the photo file and convert to blob
-      const response = await fetch(capturedPhoto);
-      const arrayBuffer = await response.arrayBuffer();
-      const blob = new Uint8Array(arrayBuffer);
+      let photoUrl = null;
 
-      // 2. Create a unique filename with user ID and timestamp (ensures isolation by user)
-      const timestamp = Date.now();
-      const fileName = `${user.id}/${timestamp}.jpg`;
+      if (capturedPhoto) {
+        const response = await fetch(capturedPhoto);
+        const arrayBuffer = await response.arrayBuffer();
+        const blob = new Uint8Array(arrayBuffer);
 
-      // 3. Upload photo to Supabase Storage bucket with RLS protection
-      const { data, error: uploadError } = await supabase.storage
-        .from('photos')
-        .upload(fileName, blob, {
-          contentType: 'image/jpeg',
-        });
+        const timestamp = Date.now();
+        const fileName = `${user.id}/${timestamp}.jpg`;
 
-      if (uploadError) throw uploadError;
+        const { error: uploadError } = await supabase.storage
+          .from('photos')
+          .upload(fileName, blob, { contentType: 'image/jpeg' });
 
-      // 4. Get the public URL for the uploaded photo
-      const { data: publicUrlData } = supabase.storage
-        .from('photos')
-        .getPublicUrl(fileName);
+        if (uploadError) throw uploadError;
 
-      const photoUrl = publicUrlData.publicUrl;
+        const { data: publicUrlData } = supabase.storage
+          .from('photos')
+          .getPublicUrl(fileName);
 
-      // 5. Save complete record with all metadata to people table
-      // Added: event, location, and date fields are now persisted
-      const { error: insertError } = await supabase
+        photoUrl = publicUrlData.publicUrl;
+      }
+
+      const { data: insertedData, error: insertError } = await supabase
         .from('people')
         .insert({
           user_id: user.id,
-          name: photoText.trim(),
+          name: name.trim(),
           photo_url: photoUrl,
-          // Added: Store event metadata
+          phone: phone.trim() || null,
+          title: title.trim() || null,
           event: event.trim() || null,
-          // Added: Store location metadata (auto-populated)
           location: location.trim() || null,
-          // Added: Store date metadata (auto-populated)
           date: date || null,
-          notes: '',
+          notes: notes.trim() || '',
           facial_details: analysis || null,
-        });
+        })
+        .select('id')
+        .single();
 
       if (insertError) throw insertError;
 
-      // 6. Success - clear form and reset fields
-      Alert.alert('Success', 'Person added to your list!');
+      // If analysis is still running, update the record when it finishes
+      if (isAnalyzing && analysisPromiseRef.current) {
+        const pendingPromise = analysisPromiseRef.current;
+        pendingPromise.then(async (result) => {
+          if (result && insertedData?.id) {
+            await supabase
+              .from('people')
+              .update({ facial_details: result })
+              .eq('id', insertedData.id);
+          }
+        }).catch((err) => {
+          console.warn('Failed to backfill facial details:', err.message);
+        });
+      }
+
+      Alert.alert('Saved', `${name.trim()} has been added to your contacts.`);
       setCapturedPhoto(null);
-      setPhotoText('');
-      // Added: Clear all metadata fields
+      setName('');
+      setPhone('');
+      setTitle('');
       setEvent('');
       setLocation('');
+      setNotes('');
       setDate(new Date().toISOString().split('T')[0]);
+      setAnalysis(null);
+      setExpandedChip(null);
+      getLocation();
     } catch (error) {
-      Alert.alert('Error', error.message || 'Failed to submit');
+      Alert.alert('Error', error.message || 'Failed to save contact');
     } finally {
       setLoading(false);
     }
   };
 
-  // Preview mode after taking a photo: show image, optional analysis overlay, inputs and actions
-  if (capturedPhoto) {
+  const toggleChip = (key) => {
+    setExpandedChip(prev => prev === key ? null : key);
+  };
+
+  // Camera overlay
+  if (showCamera) {
     return (
-      <View style={styles.container}>
-        <View style={styles.previewContainer}>
-          {/* Use contain so image is not overly zoomed/cropped */}
-          <Image source={{ uri: capturedPhoto }} style={styles.previewImage} />
-
-          {/* Show simple analyzing overlay while remote analysis runs */}
-          {isAnalyzing && (
-            <View style={styles.analysisOverlay}>
-              <Text style={styles.analysisText}>Analyzing face...</Text>
-            </View>
-          )}
-
-          {/* Display analysis results when available */}
-          {analysis && analysis.success && (
-            <View style={styles.analysisOverlay}>
-              <Text style={styles.analysisText}>
-                Face detected
-              </Text>
-              {analysis.data && (
-                <Text style={styles.analysisSubtext}>
-                  {[
-                    analysis.data.gender,
-                    analysis.data.age_range,
-                    analysis.data.primary_emotion,
-                  ].filter(Boolean).join(' · ')}
-                </Text>
-              )}
-            </View>
-          )}
-
-          {/* Inputs: made smaller and single-line so buttons remain visible and scrollable */}
-          <View style={styles.inputContainer}>
-            <TextInput
-              style={styles.textInput}
-              placeholder="Name of person..."
-              value={photoText}
-              onChangeText={setPhotoText}
-              multiline={false}
-              editable={!loading}
-            />
-            <TextInput
-              style={styles.textInput}
-              placeholder="Event (e.g., Party, Conference)"
-              value={event}
-              onChangeText={setEvent}
-              multiline={false}
-              editable={!loading}
-            />
-            <TextInput
-              style={styles.textInput}
-              placeholder="Location"
-              value={location}
-              onChangeText={setLocation}
-              multiline={false}
-              editable={!loading}
-            />
-            <TextInput
-              style={styles.textInput}
-              placeholder="Date (YYYY-MM-DD)"
-              value={date}
-              onChangeText={setDate}
-              multiline={false}
-              editable={!loading}
-            />
-            <View style={styles.buttonRow}>
+      <View style={styles.cameraContainer}>
+        <CameraView style={styles.camera} facing={cameraFacing} ref={cameraRef}>
+          <SafeAreaView style={styles.cameraOverlay}>
+            <View style={styles.cameraTopRow}>
               <TouchableOpacity
-                style={[styles.button, styles.retakeButton]}
-                onPress={handleRetake}
-                disabled={loading}
+                style={styles.cameraCloseButton}
+                onPress={() => setShowCamera(false)}
               >
-                <Text style={styles.buttonText}>Retake</Text>
+                <Ionicons name="chevron-back" size={28} color="#fff" />
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.button, styles.submitButton, loading && styles.buttonDisabled]}
-                onPress={handleSubmit}
-                disabled={loading}
+                style={styles.cameraFlipButton}
+                onPress={() => setCameraFacing(f => f === 'front' ? 'back' : 'front')}
               >
-                {loading ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.buttonText}>Submit</Text>
-                )}
+                <Ionicons name="camera-reverse-outline" size={26} color="#fff" />
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
+            <View style={styles.cameraBottom}>
+              <TouchableOpacity style={styles.shutterButton} onPress={takePicture}>
+                <View style={styles.shutterButtonInner} />
+              </TouchableOpacity>
+            </View>
+          </SafeAreaView>
+        </CameraView>
       </View>
     );
   }
 
+  const expandedField = expandedChip && DETAIL_FIELDS.find(f => f.key === expandedChip);
+
   return (
-    <View style={styles.container}>
-      {/* cameraWrapper provides a small padding/border so camera preview isn't zoomed/cropped */}
-      <View style={styles.cameraWrapper}>
-        <CameraView style={styles.cameraInner} facing="back" ref={cameraRef}>
-          <View style={styles.buttonContainer}>
-            <TouchableOpacity style={styles.shutterButton} onPress={takePicture}>
-              <View style={styles.shutterButtonInner} />
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.flex}
+      >
+        <ScrollView
+          style={[styles.container, { backgroundColor: colors.background }]}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          <Text style={[styles.screenTitle, { color: colors.text }]}>New Contact</Text>
+
+          {/* Photo placeholder */}
+          <View style={styles.photoSection}>
+            <TouchableOpacity
+              style={[styles.photoPlaceholder, { backgroundColor: colors.accentLight }]}
+              onPress={handlePhotoPress}
+              activeOpacity={0.7}
+            >
+              {capturedPhoto ? (
+                <>
+                  <Image source={{ uri: capturedPhoto }} style={styles.photoImage} />
+                  <TouchableOpacity
+                    style={styles.retakeButton}
+                    onPress={handlePhotoPress}
+                  >
+                    <Ionicons name="camera" size={16} color="#fff" />
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <Ionicons name="camera" size={36} color={colors.accent} />
+              )}
             </TouchableOpacity>
+            {isAnalyzing && (
+              <Text style={[styles.analyzingText, { color: colors.textTertiary }]}>Analyzing...</Text>
+            )}
           </View>
-        </CameraView>
-      </View>
-    </View>
+
+          {/* Primary fields */}
+          <View style={styles.formSection}>
+            <TextInput
+              style={[styles.nameInput, { color: colors.text }]}
+              placeholder="Name"
+              placeholderTextColor={colors.placeholder}
+              value={name}
+              onChangeText={setName}
+              editable={!loading}
+            />
+            <View style={[styles.separator, { backgroundColor: colors.border }]} />
+            <TextInput
+              style={[styles.fieldInput, { color: colors.text }]}
+              placeholder="Phone"
+              placeholderTextColor={colors.placeholder}
+              value={phone}
+              onChangeText={setPhone}
+              keyboardType="phone-pad"
+              editable={!loading}
+            />
+          </View>
+
+          {/* Detail chips */}
+          <View style={styles.chipsSection}>
+            <View style={styles.chipsRow}>
+              {DETAIL_FIELDS.map((field) => {
+                const value = detailValues[field.key];
+                const isFilled = !!value;
+                const isExpanded = expandedChip === field.key;
+                return (
+                  <TouchableOpacity
+                    key={field.key}
+                    style={[
+                      styles.chip,
+                      { borderColor: colors.border },
+                      isFilled && { backgroundColor: colors.accentLight, borderColor: colors.accentLight },
+                      isExpanded && { backgroundColor: colors.accent, borderColor: colors.accent },
+                    ]}
+                    onPress={() => toggleChip(field.key)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name={field.icon}
+                      size={14}
+                      color={isExpanded ? '#fff' : isFilled ? colors.accent : colors.textTertiary}
+                      style={styles.chipIcon}
+                    />
+                    <Text
+                      style={[
+                        styles.chipText,
+                        { color: isExpanded ? '#fff' : isFilled ? colors.accent : colors.textTertiary },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {isFilled ? value : field.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Expanded chip input */}
+            {expandedField && (
+              <View style={[styles.chipInputContainer, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                <TextInput
+                  ref={chipInputRef}
+                  style={[styles.chipInput, { color: colors.text }]}
+                  placeholder={expandedField.placeholder}
+                  placeholderTextColor={colors.placeholder}
+                  value={detailValues[expandedField.key]}
+                  onChangeText={detailSetters[expandedField.key]}
+                  onSubmitEditing={() => setExpandedChip(null)}
+                  returnKeyType="done"
+                  editable={!loading}
+                />
+                <TouchableOpacity onPress={() => setExpandedChip(null)} style={styles.chipInputDone}>
+                  <Ionicons name="checkmark-circle" size={22} color={colors.accent} />
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+
+          {/* Notes */}
+          <View style={styles.notesSection}>
+            <TextInput
+              style={[
+                styles.notesInput,
+                { color: colors.text, backgroundColor: colors.inputBg, borderColor: colors.border },
+              ]}
+              placeholder="Add notes..."
+              placeholderTextColor={colors.placeholder}
+              value={notes}
+              onChangeText={setNotes}
+              multiline
+              textAlignVertical="top"
+              editable={!loading}
+            />
+          </View>
+
+          {/* Save button */}
+          <TouchableOpacity
+            style={[styles.saveButton, loading && styles.saveButtonDisabled]}
+            onPress={handleSave}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.saveButtonText}>Save Contact</Text>
+            )}
+          </TouchableOpacity>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: {
+    flex: 1,
+  },
+  safeArea: {
+    flex: 1,
+  },
   container: {
     flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 40,
+  },
+  screenTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 20,
+  },
+
+  // Photo
+  photoSection: {
+    alignItems: 'center',
+    paddingBottom: 30,
+  },
+  photoPlaceholder: {
+    width: 160,
+    height: 160,
+    borderRadius: 80,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#000',
+    overflow: 'hidden',
   },
-  message: {
-    textAlign: 'center',
-    paddingBottom: 20,
-    color: '#fff',
+  photoImage: {
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    resizeMode: 'cover',
+  },
+  retakeButton: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  analyzingText: {
+    marginTop: 8,
+    fontSize: 12,
+  },
+
+  // Primary form
+  formSection: {
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  nameInput: {
+    fontSize: 20,
+    fontWeight: '600',
+    paddingVertical: 14,
+  },
+  fieldInput: {
     fontSize: 16,
+    paddingVertical: 14,
+  },
+  separator: {
+    height: 1,
+  },
+
+  // Detail chips
+  chipsSection: {
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  chipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  chipIcon: {
+    marginRight: 5,
+  },
+  chipText: {
+    fontSize: 13,
+    fontWeight: '500',
+    maxWidth: 120,
+  },
+  chipInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+  },
+  chipInput: {
+    flex: 1,
+    fontSize: 15,
+    paddingVertical: 12,
+  },
+  chipInputDone: {
+    padding: 4,
+    marginLeft: 8,
+  },
+
+  // Notes
+  notesSection: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  notesInput: {
+    fontSize: 15,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 12,
+    minHeight: 100,
+  },
+
+  // Save button
+  saveButton: {
+    marginHorizontal: 20,
+    backgroundColor: '#8B5CF6',
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  saveButtonDisabled: {
+    opacity: 0.6,
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '600',
+  },
+
+  // Camera
+  cameraContainer: {
+    flex: 1,
+    backgroundColor: '#000',
   },
   camera: {
     flex: 1,
-    width: '100%',
   },
-  // Wrapper provides a small margin so camera input isn't edge-to-edge (reduces zoomed-in feeling)
-  cameraWrapper: {
+  cameraOverlay: {
     flex: 1,
-    width: '100%',
-    padding: 8,
-    backgroundColor: '#000',
+    justifyContent: 'space-between',
   },
-  // Camera inner should fill wrapper and keep aspect
-  cameraInner: {
-    flex: 1,
-    borderRadius: 8,
-    overflow: 'hidden',
+  cameraTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  buttonContainer: {
-    flex: 1,
-    justifyContent: 'flex-end',
+  cameraCloseButton: {
+    padding: 16,
+  },
+  cameraFlipButton: {
+    padding: 16,
+  },
+  cameraBottom: {
     alignItems: 'center',
     paddingBottom: 40,
   },
@@ -368,80 +628,5 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 28,
     backgroundColor: '#fff',
-  },
-  previewContainer: {
-    flex: 1,
-    width: '100%',
-    backgroundColor: '#fff',
-  },
-  previewImage: {
-    width: '100%',
-    height: '60%',
-    // Use contain to avoid cropping / zooming in on face
-    resizeMode: 'contain',
-    backgroundColor: '#000',
-  },
-  // Make inputs compact and allow scrolling so buttons remain visible
-  inputContainer: {
-    flex: 1,
-    padding: 12,
-    justifyContent: 'flex-start',
-  },
-  // Reduced input height so submit/retake buttons fit on screen
-  textInput: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-    minHeight: 44,
-    textAlignVertical: 'center',
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  button: {
-    flex: 1,
-    paddingVertical: 15,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  retakeButton: {
-    backgroundColor: '#8E8E93',
-  },
-  submitButton: {
-    backgroundColor: '#007AFF',
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  buttonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  analysisOverlay: {
-    position: 'absolute',
-    top: 10,
-    left: 10,
-    right: 10,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    borderRadius: 8,
-    padding: 8,
-  },
-  analysisText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  analysisSubtext: {
-    color: '#ccc',
-    fontSize: 12,
-    textAlign: 'center',
-    marginTop: 2,
   },
 });

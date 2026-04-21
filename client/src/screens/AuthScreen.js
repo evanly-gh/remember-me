@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 
 export default function AuthScreen() {
   const [email, setEmail] = useState('');
@@ -18,6 +19,7 @@ export default function AuthScreen() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
   const { signIn, signUp } = useAuth();
+  const { colors } = useTheme();
 
   const handleAuth = async () => {
     if (!email || !password) {
@@ -43,17 +45,18 @@ export default function AuthScreen() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
     >
       <View style={styles.formContainer}>
-        <Text style={styles.title}>Remember Me</Text>
-        <Text style={styles.subtitle}>
+        <Text style={[styles.title, { color: colors.text }]}>Remember Me</Text>
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
           {isSignUp ? 'Create an account' : 'Sign in to continue'}
         </Text>
 
         <TextInput
-          style={styles.input}
+          style={[styles.input, { borderColor: colors.border, backgroundColor: colors.inputBgAlt, color: colors.text }]}
           placeholder="Email"
+          placeholderTextColor={colors.placeholder}
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
@@ -62,8 +65,9 @@ export default function AuthScreen() {
         />
 
         <TextInput
-          style={styles.input}
+          style={[styles.input, { borderColor: colors.border, backgroundColor: colors.inputBgAlt, color: colors.text }]}
           placeholder="Password"
+          placeholderTextColor={colors.placeholder}
           value={password}
           onChangeText={setPassword}
           secureTextEntry
@@ -89,7 +93,7 @@ export default function AuthScreen() {
           style={styles.switchButton}
           onPress={() => setIsSignUp(!isSignUp)}
         >
-          <Text style={styles.switchText}>
+          <Text style={[styles.switchText, { color: colors.accent }]}>
             {isSignUp
               ? 'Already have an account? Sign In'
               : "Don't have an account? Sign Up"}
@@ -103,7 +107,6 @@ export default function AuthScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
     justifyContent: 'center',
   },
   formContainer: {
@@ -114,26 +117,22 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 10,
     textAlign: 'center',
-    color: '#333',
   },
   subtitle: {
     fontSize: 16,
-    color: '#666',
     marginBottom: 30,
     textAlign: 'center',
   },
   input: {
     height: 50,
     borderWidth: 1,
-    borderColor: '#ddd',
     borderRadius: 8,
     paddingHorizontal: 15,
     fontSize: 16,
     marginBottom: 15,
-    backgroundColor: '#f9f9f9',
   },
   button: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#8B5CF6',
     height: 50,
     borderRadius: 8,
     justifyContent: 'center',
@@ -153,7 +152,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   switchText: {
-    color: '#007AFF',
     fontSize: 16,
   },
 });

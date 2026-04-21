@@ -1,8 +1,9 @@
 FROM python:3.11-slim
 
-# System deps for OpenCV
+# System deps for OpenCV and MediaPipe
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 wget \
+    libegl1 libgles2 libgomp1 \
     g++ && \
     rm -rf /var/lib/apt/lists/*
 
@@ -19,6 +20,6 @@ RUN mkdir -p models && \
 
 COPY . .
 
-EXPOSE 8000
+EXPOSE 7860
 
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7860"]
