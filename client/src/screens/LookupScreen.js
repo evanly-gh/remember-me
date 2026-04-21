@@ -143,6 +143,8 @@ export default function LookupScreen({ navigation }) {
           style={styles.list}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
+          scrollEventThrottle={16}
+          keyboardShouldPersistTaps="handled"
         >
           {filteredProfiles.length === 0 ? (
             <View style={styles.emptyState}>
@@ -156,7 +158,7 @@ export default function LookupScreen({ navigation }) {
                 key={profile.id}
                 style={[styles.contactRow, { borderBottomColor: colors.border }]}
                 onPress={() => navigation.navigate('EditProfile', { profileName: profile.name })}
-                activeOpacity={0.6}
+                activeOpacity={0.7}
               >
                 {profile.photo_url ? (
                   <Image source={{ uri: profile.photo_url }} style={[styles.contactPhoto, { backgroundColor: colors.inputBg }]} />
