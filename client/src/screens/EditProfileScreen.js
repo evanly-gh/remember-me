@@ -40,6 +40,7 @@ export default function EditProfileScreen({ route, navigation }) {
     if (user) loadRecords();
   }, [user, profileName]);
 
+
   useFocusEffect(
     useCallback(() => {
       loadSettings();
@@ -372,6 +373,15 @@ export default function EditProfileScreen({ route, navigation }) {
         )}
 
         {/* Facial details */}
+        {showFacialDetails && selectedPhoto?.photo_url && !selectedPhoto?.facial_details && (
+          <View style={[styles.infoSection, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.sectionHeader, { color: colors.textTertiary }]}>Facial Analysis</Text>
+            <View style={styles.analyzingContainer}>
+              <ActivityIndicator size="small" color={colors.accent} />
+              <Text style={[styles.analyzingText, { color: colors.textSecondary }]}>Analyzing facial features...</Text>
+            </View>
+          </View>
+        )}
         {showFacialDetails && selectedPhoto?.facial_details && (
           <View style={[styles.infoSection, { borderBottomColor: colors.border }]}>
             <Text style={[styles.sectionHeader, { color: colors.textTertiary }]}>Facial Analysis</Text>
@@ -669,6 +679,16 @@ const styles = StyleSheet.create({
   },
 
   // Facial details
+  analyzingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  analyzingText: {
+    marginLeft: 10,
+    fontSize: 14,
+  },
   facialSubheader: {
     fontSize: 13,
     fontWeight: '600',

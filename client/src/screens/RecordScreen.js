@@ -40,13 +40,11 @@ export default function RecordScreen() {
   const [date, setDate] = useState('');
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysis, setAnalysis] = useState(null);
   const [cameraFacing, setCameraFacing] = useState('back');
   const [expandedChip, setExpandedChip] = useState(null);
+  const [photoBase64, setPhotoBase64] = useState(null);
   const cameraRef = useRef(null);
   const chipInputRef = useRef(null);
-  const analysisPromiseRef = useRef(null);
   const { user } = useAuth();
   const { colors } = useTheme();
 
@@ -116,41 +114,9 @@ export default function RecordScreen() {
     if (cameraRef.current) {
       const photo = await cameraRef.current.takePictureAsync({ base64: true });
       setCapturedPhoto(photo.uri);
+      setPhotoBase64(photo.base64);
       setShowCamera(false);
-      analyzeFace(photo.base64);
     }
-  };
-
-  const analyzeFace = (base64Image) => {
-    if (!process.env.EXPO_PUBLIC_FACE_ANALYSIS_URL) return;
-
-    setIsAnalyzing(true);
-    setAnalysis(null);
-
-    const promise = fetch(process.env.EXPO_PUBLIC_FACE_ANALYSIS_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true',
-      },
-      body: JSON.stringify({ image: base64Image }),
-    })
-      .then((response) => {
-        if (!response.ok) return null;
-        return response.json();
-      })
-      .then((result) => result || null)
-      .catch((error) => {
-        console.warn('Face analysis failed:', error.message || error);
-        return null;
-      });
-
-    analysisPromiseRef.current = promise;
-
-    promise.then((result) => {
-      setAnalysis(result);
-      setIsAnalyzing(false);
-    });
   };
 
   const handleSave = async () => {
@@ -202,30 +168,41 @@ export default function RecordScreen() {
           location: location.trim() || null,
           date: date || null,
           notes: notes.trim() || '',
-          facial_details: analysis || null,
         })
         .select('id')
         .single();
 
       if (insertError) throw insertError;
 
-      // If analysis is still running, update the record when it finishes
-      if (isAnalyzing && analysisPromiseRef.current) {
-        const pendingPromise = analysisPromiseRef.current;
-        pendingPromise.then(async (result) => {
-          if (result && insertedData?.id) {
-            await supabase
-              .from('people')
-              .update({ facial_details: result })
-              .eq('id', insertedData.id);
-          }
-        }).catch((err) => {
-          console.warn('Failed to backfill facial details:', err.message);
-        });
+      // Fire off face analysis asynchronously after the contact is saved
+      if (photoBase64 && process.env.EXPO_PUBLIC_FACE_ANALYSIS_URL && insertedData?.id) {
+        const recordId = insertedData.id;
+        const imageData = photoBase64;
+        fetch(process.env.EXPO_PUBLIC_FACE_ANALYSIS_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true',
+          },
+          body: JSON.stringify({ image: imageData }),
+        })
+          .then((res) => res.ok ? res.json() : null)
+          .then(async (result) => {
+            if (result) {
+              await supabase
+                .from('people')
+                .update({ facial_details: result })
+                .eq('id', recordId);
+            }
+          })
+          .catch((err) => {
+            console.warn('Face analysis failed:', err.message || err);
+          });
       }
 
       Alert.alert('Saved', `${name.trim()} has been added to your contacts.`);
       setCapturedPhoto(null);
+      setPhotoBase64(null);
       setName('');
       setPhone('');
       setTitle('');
@@ -233,7 +210,6 @@ export default function RecordScreen() {
       setLocation('');
       setNotes('');
       setDate(new Date().toISOString().split('T')[0]);
-      setAnalysis(null);
       setExpandedChip(null);
       getLocation();
     } catch (error) {
@@ -314,9 +290,6 @@ export default function RecordScreen() {
                 <Ionicons name="camera" size={36} color={colors.accent} />
               )}
             </TouchableOpacity>
-            {isAnalyzing && (
-              <Text style={[styles.analyzingText, { color: colors.textTertiary }]}>Analyzing...</Text>
-            )}
           </View>
 
           {/* Primary fields */}
@@ -486,10 +459,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  analyzingText: {
-    marginTop: 8,
-    fontSize: 12,
   },
 
   // Primary form
