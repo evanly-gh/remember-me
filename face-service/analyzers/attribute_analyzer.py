@@ -1,15 +1,23 @@
 """
-Pretrained CLIP-based face attribute classification.
+CLIP zero-shot attribute classification.
 
-The old implementation tried to download unavailable CelebA weights and then
-fell back to random predictions. This version uses a public zero-shot CLIP
-model so the output is deterministic and grounded in pretrained weights.
+Previous version put all ~70 candidate labels into a single zero-shot pipeline
+call, which applied one softmax across every label at once. That meant each
+binary pair ("wearing earrings" vs "not wearing earrings") received ~1/70 of
+the probability mass and the comparison between positive and negative was
+essentially noise — hence the hallucinated accessories.
+
+This version encodes the image once with CLIPModel.get_image_features, then
+runs a fresh 2-way softmax per binary pair. Group labels (hair color,
+hair texture) get their own N-way softmax. All scores are now independent
+of how many other labels we happen to be asking about.
 """
 
 from typing import Any
 
+import torch
 from PIL import Image
-from transformers import pipeline
+from transformers import CLIPModel, CLIPProcessor
 
 
 CLIP_MODEL_ID = "openai/clip-vit-base-patch32"
@@ -51,114 +59,117 @@ PAIRS = {
 HAIR_COLOR_LABELS = ["black hair", "blond hair", "brown hair", "gray hair"]
 HAIR_TEXTURE_LABELS = ["straight hair", "wavy hair", "curly hair"]
 
+# Some pairs default to False unless CLIP is confidently past this threshold.
+# Stops borderline cases from being flipped to True on a 51/49 split.
+ACCESSORY_THRESHOLD = 0.65
+ACCESSORY_KEYS = {
+    "wearing_earrings", "wearing_necklace", "wearing_necktie", "wearing_hat",
+    "heavy_makeup", "wearing_lipstick",
+}
+
+
+def _prompt(text: str) -> str:
+    return f"a photo of {text}"
+
 
 class AttributeAnalyzer:
     def __init__(self):
-        self.classifier = self._load_classifier()
-
-    @staticmethod
-    def _load_classifier():
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model = None
+        self.processor = None
         try:
-            return pipeline("zero-shot-image-classification", model=CLIP_MODEL_ID)
+            self.model = CLIPModel.from_pretrained(CLIP_MODEL_ID).to(self.device).eval()
+            self.processor = CLIPProcessor.from_pretrained(CLIP_MODEL_ID)
         except Exception as exc:
-            print(f"[AttributeAnalyzer] Failed to load CLIP classifier: {exc}")
-            return None
+            print(f"[AttributeAnalyzer] Failed to load CLIP: {exc}")
 
+    @torch.no_grad()
     def analyze(self, img_rgb) -> dict[str, Any]:
+        if self.model is None or self.processor is None:
+            return self._empty_result()
+
         pil = Image.fromarray(img_rgb)
 
-        candidate_labels = []
-        for positive, negative in PAIRS.values():
-            candidate_labels.extend([positive, negative])
-        candidate_labels.extend(HAIR_COLOR_LABELS)
-        candidate_labels.extend(HAIR_TEXTURE_LABELS)
+        # Encode image once.
+        image_inputs = self.processor(images=pil, return_tensors="pt").to(self.device)
+        image_features = self.model.get_image_features(**image_inputs)
+        image_features = image_features / image_features.norm(dim=-1, keepdim=True)
 
-        if self.classifier is None:
-            return self._empty_result()
+        # Per-pair scoring: each pair gets its own independent 2-way softmax.
+        pair_scores: dict[str, float] = {}
+        for key, (positive, negative) in PAIRS.items():
+            prompts = [_prompt(positive), _prompt(negative)]
+            pair_scores[key] = self._softmax_positive(image_features, prompts)
 
-        try:
-            predictions = self.classifier(
-                pil,
-                candidate_labels=candidate_labels,
-                hypothesis_template="a photo of {}",
-            )
-        except Exception as exc:
-            print(f"[AttributeAnalyzer] Prediction failed: {exc}")
-            return self._empty_result()
-        score_map = {item["label"]: float(item["score"]) for item in predictions}
+        # Group scoring (N-way softmax within each group).
+        color_scores = self._group_softmax(
+            image_features, [_prompt(x) for x in HAIR_COLOR_LABELS]
+        )
+        texture_scores = self._group_softmax(
+            image_features, [_prompt(x) for x in HAIR_TEXTURE_LABELS]
+        )
 
-        result: dict[str, Any] = {"_celeba_raw": {k: round(v, 3) for k, v in score_map.items()}}
+        hair_color_name = HAIR_COLOR_LABELS[int(torch.argmax(torch.tensor(color_scores)))].split()[0]
+        hair_texture_name = HAIR_TEXTURE_LABELS[int(torch.argmax(torch.tensor(texture_scores)))].split()[0]
 
-        def pair_score(key: str) -> tuple[bool, float]:
-            positive, negative = PAIRS[key]
-            positive_score = score_map.get(positive, 0.0)
-            negative_score = score_map.get(negative, 0.0)
-            return positive_score >= negative_score, round(positive_score, 3)
+        def flag(key: str) -> bool:
+            score = pair_scores.get(key, 0.0)
+            threshold = ACCESSORY_THRESHOLD if key in ACCESSORY_KEYS else 0.5
+            return score >= threshold
 
-        hair_color = max(HAIR_COLOR_LABELS, key=lambda label: score_map.get(label, 0.0))
-        hair_texture = max(HAIR_TEXTURE_LABELS, key=lambda label: score_map.get(label, 0.0))
-
-        result["hair_color_celeba"] = hair_color.split()[0]
-        result["hair_color_scores"] = {
-            label.split()[0]: round(score_map.get(label, 0.0), 3)
-            for label in HAIR_COLOR_LABELS
+        result: dict[str, Any] = {
+            "_celeba_raw": {k: round(v, 3) for k, v in pair_scores.items()},
+            "hair_color_celeba": hair_color_name,
+            "hair_color_scores": {
+                label.split()[0]: round(float(score), 3)
+                for label, score in zip(HAIR_COLOR_LABELS, color_scores)
+            },
+            "hair_texture_celeba": hair_texture_name,
         }
-        result["hair_texture_celeba"] = hair_texture.split()[0]
 
-        result["has_bangs"] = pair_score("has_bangs")[0]
-        result["is_bald"] = pair_score("is_bald")[0]
-        result["receding_hairline"] = pair_score("receding_hairline")[0]
+        for key in PAIRS:
+            result[key] = flag(key)
 
-        has_beard, beard_score = pair_score("has_beard")
-        result["has_beard"] = has_beard
+        beard_score = pair_scores.get("has_beard", 0.0)
         result["facial_hair"] = {
-            "5_o_clock_shadow": score_map.get("has a beard", 0.0) > 0.45,
-            "goatee": pair_score("goatee")[0],
-            "mustache": pair_score("mustache")[0],
-            "sideburns": pair_score("sideburns")[0],
-            "full_beard": has_beard and beard_score > 0.55,
+            "5_o_clock_shadow": 0.45 < beard_score < 0.7,
+            "goatee": flag("goatee"),
+            "mustache": flag("mustache"),
+            "sideburns": flag("sideburns"),
+            "full_beard": beard_score > 0.7,
         }
-
-        result["wearing_glasses"] = pair_score("wearing_glasses")[0]
-        result["wearing_earrings"] = pair_score("wearing_earrings")[0]
-        result["wearing_hat"] = pair_score("wearing_hat")[0]
-        result["wearing_necklace"] = pair_score("wearing_necklace")[0]
-        result["wearing_necktie"] = pair_score("wearing_necktie")[0]
-
-        result["heavy_makeup"] = pair_score("heavy_makeup")[0]
-        result["wearing_lipstick"] = pair_score("wearing_lipstick")[0]
-
-        result["big_nose"] = pair_score("big_nose")[0]
-        result["pointy_nose"] = pair_score("pointy_nose")[0]
-        result["big_lips"] = pair_score("big_lips")[0]
-        result["high_cheekbones"] = pair_score("high_cheekbones")[0]
-        result["oval_face_celeba"] = pair_score("oval_face_celeba")[0]
-        result["double_chin"] = pair_score("double_chin")[0]
-        result["chubby"] = pair_score("chubby")[0]
-        result["rosy_cheeks"] = pair_score("rosy_cheeks")[0]
-        result["bags_under_eyes"] = pair_score("bags_under_eyes")[0]
-        result["narrow_eyes"] = pair_score("narrow_eyes")[0]
-        result["arched_eyebrows"] = pair_score("arched_eyebrows")[0]
-        result["bushy_eyebrows"] = pair_score("bushy_eyebrows")[0]
-        result["pale_skin"] = pair_score("pale_skin")[0]
-        result["attractive"] = pair_score("attractive")[0]
-        result["young"] = pair_score("young")[0]
-        result["smiling_celeba"] = pair_score("smiling_celeba")[0]
-        result["mouth_open"] = pair_score("mouth_open")[0]
 
         return result
 
+    @torch.no_grad()
+    def _softmax_positive(self, image_features: torch.Tensor, prompts: list[str]) -> float:
+        text_inputs = self.processor(
+            text=prompts, return_tensors="pt", padding=True
+        ).to(self.device)
+        text_features = self.model.get_text_features(**text_inputs)
+        text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+        logits = (image_features @ text_features.T) * self.model.logit_scale.exp()
+        probs = torch.softmax(logits, dim=-1)[0]
+        return float(probs[0])
+
+    @torch.no_grad()
+    def _group_softmax(self, image_features: torch.Tensor, prompts: list[str]) -> list[float]:
+        text_inputs = self.processor(
+            text=prompts, return_tensors="pt", padding=True
+        ).to(self.device)
+        text_features = self.model.get_text_features(**text_inputs)
+        text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+        logits = (image_features @ text_features.T) * self.model.logit_scale.exp()
+        probs = torch.softmax(logits, dim=-1)[0]
+        return [float(p) for p in probs]
+
     @staticmethod
     def _empty_result() -> dict[str, Any]:
-        return {
+        base: dict[str, Any] = {
             "_celeba_raw": {},
             "hair_color_celeba": "unknown",
             "hair_color_scores": {"black": 0.0, "blond": 0.0, "brown": 0.0, "gray": 0.0},
             "hair_texture_celeba": "unknown",
-            "has_bangs": False,
-            "is_bald": False,
-            "receding_hairline": False,
-            "has_beard": False,
             "facial_hair": {
                 "5_o_clock_shadow": False,
                 "goatee": False,
@@ -166,28 +177,7 @@ class AttributeAnalyzer:
                 "sideburns": False,
                 "full_beard": False,
             },
-            "wearing_glasses": False,
-            "wearing_earrings": False,
-            "wearing_hat": False,
-            "wearing_necklace": False,
-            "wearing_necktie": False,
-            "heavy_makeup": False,
-            "wearing_lipstick": False,
-            "big_nose": False,
-            "pointy_nose": False,
-            "big_lips": False,
-            "high_cheekbones": False,
-            "oval_face_celeba": False,
-            "double_chin": False,
-            "chubby": False,
-            "rosy_cheeks": False,
-            "bags_under_eyes": False,
-            "narrow_eyes": False,
-            "arched_eyebrows": False,
-            "bushy_eyebrows": False,
-            "pale_skin": False,
-            "attractive": False,
-            "young": False,
-            "smiling_celeba": False,
-            "mouth_open": False,
         }
+        for key in PAIRS:
+            base[key] = False
+        return base
