@@ -121,6 +121,14 @@ export default function EditProfileScreen({ route, navigation }) {
     }
   };
 
+  // Helper function to extract file path from Supabase public URL
+  const extractFilePathFromUrl = (url) => {
+    if (!url) return null;
+    // URL format: https://<project>.supabase.co/storage/v1/object/public/photos/<user_id>/<timestamp>.jpg
+    const match = url.match(/\/photos\/(.+)$/);
+    return match ? match[1] : null;
+  };
+
   const handleDeletePhoto = async (recordId) => {
     Alert.alert(
       'Delete Photo',
@@ -131,6 +139,25 @@ export default function EditProfileScreen({ route, navigation }) {
           text: 'Delete',
           onPress: async () => {
             try {
+              // Find the record to get the photo URL
+              const record = records.find(r => r.id === recordId);
+
+              // Delete from storage first (if photo exists)
+              if (record?.photo_url) {
+                const fileName = extractFilePathFromUrl(record.photo_url);
+                if (fileName) {
+                  const { error: storageError } = await supabase.storage
+                    .from('photos')
+                    .remove([fileName]);
+
+                  if (storageError) {
+                    console.warn('Failed to delete storage file:', storageError);
+                    // Continue with DB deletion anyway
+                  }
+                }
+              }
+
+              // Then delete from database
               const { error } = await supabase
                 .from('people')
                 .delete()
@@ -161,6 +188,24 @@ export default function EditProfileScreen({ route, navigation }) {
           text: 'Delete',
           onPress: async () => {
             try {
+              // Collect all photo file paths to delete from storage
+              const filePaths = records
+                .map(record => extractFilePathFromUrl(record.photo_url))
+                .filter(Boolean);
+
+              // Delete all photos from storage
+              if (filePaths.length > 0) {
+                const { error: storageError } = await supabase.storage
+                  .from('photos')
+                  .remove(filePaths);
+
+                if (storageError) {
+                  console.warn('Failed to delete some storage files:', storageError);
+                  // Continue with DB deletion anyway
+                }
+              }
+
+              // Then delete all records from database
               const { error } = await supabase
                 .from('people')
                 .delete()
