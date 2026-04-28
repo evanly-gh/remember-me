@@ -6,12 +6,15 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useFocusEffect } from '@react-navigation/native';
+import { generateEmbedding } from '../lib/embeddings';
 
 export default function LookupScreen({ navigation }) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchInput, setSearchInput] = useState(''); // Separate state for input field
   const [profiles, setProfiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [searching, setSearching] = useState(false);
   const { user } = useAuth();
   const { colors } = useTheme();
 
@@ -60,51 +63,74 @@ export default function LookupScreen({ navigation }) {
     loadProfiles();
   };
 
-  const filteredProfiles = profiles.filter(profile => {
-    const query = searchQuery.toLowerCase();
-
-    if (profile.name.toLowerCase().includes(query)) return true;
-
-    if (profile.facial_details) {
-      try {
-        const details = typeof profile.facial_details === 'string'
-          ? JSON.parse(profile.facial_details)
-          : profile.facial_details;
-
-        const d = details?.data || details;
-        if (d) {
-          if ((query.includes('smil') || query.includes('happy')) && (d.smiling || d.smiling_celeba)) return true;
-          if (query.includes('beard') && d.has_beard) return true;
-          if (d.primary_emotion && d.primary_emotion.toLowerCase().includes(query)) return true;
-          if (query.includes('glass') && (d.wearing_glasses || d.glasses_detected)) return true;
-          if (d.gender && d.gender.toLowerCase().includes(query)) return true;
-          if (d.face_shape && d.face_shape.toLowerCase().includes(query)) return true;
-          if (d.hair_color_celeba && d.hair_color_celeba.toLowerCase().includes(query)) return true;
-          if (d.hair_color?.name && d.hair_color.name.toLowerCase().includes(query)) return true;
-          if (d.eye_color && typeof d.eye_color === 'string' && d.eye_color.toLowerCase().includes(query)) return true;
-          if (d.ethnicity && d.ethnicity.toLowerCase().includes(query)) return true;
-          if (d.age_range && d.age_range.includes(query)) return true;
-          if (d.hair_length && d.hair_length.toLowerCase().includes(query)) return true;
-          if (d.eye_shape && d.eye_shape.toLowerCase().includes(query)) return true;
-          if (query.includes('hat') && (d.wearing_hat || d.hat_detected)) return true;
-          if (query.includes('bald') && d.is_bald) return true;
-          if (query.includes('young') && d.young) return true;
-          const textFields = ['jawline_type', 'chin_type', 'nose_shape', 'lip_fullness', 'eye_depth', 'eye_spacing', 'hair_texture', 'skin_undertone'];
-          for (const field of textFields) {
-            if (d[field] && d[field].toLowerCase().includes(query)) return true;
-          }
-        }
-      } catch (error) {
-        console.error('Error parsing facial_details:', error);
-      }
+  // Semantic search using embeddings
+  const performSemanticSearch = async (query) => {
+    if (!query.trim()) {
+      // Empty query - show all profiles
+      loadProfiles();
+      return;
     }
 
-    return false;
-  });
+    try {
+      setSearching(true);
 
-  if (searchQuery.trim()) {
-    filteredProfiles.sort((a, b) => a.name.localeCompare(b.name));
-  }
+      // Generate embedding for search query
+      const queryEmbedding = await generateEmbedding(query);
+
+      if (!queryEmbedding) {
+        // Fallback to keyword search if embedding generation fails
+        console.warn('Embedding generation failed, using local filter');
+        return;
+      }
+
+      // Search using Supabase vector similarity
+      // Convert array to PostgreSQL vector format string
+      const vectorString = `[${queryEmbedding.join(',')}]`;
+
+      const { data, error } = await supabase.rpc('search_contacts', {
+        query_embedding: vectorString,
+        match_threshold: 0.3,  // Lower threshold = more results (range: 0-1)
+        match_count: 100,
+        user_id_filter: user.id
+      });
+
+      if (error) {
+        console.error('Semantic search error:', error);
+        // Fallback to showing all profiles
+        return;
+      }
+
+      // Deduplicate by name (keep most recent per person)
+      const uniqueProfiles = {};
+      data.forEach(record => {
+        if (!uniqueProfiles[record.name] ||
+            new Date(record.created_at) > new Date(uniqueProfiles[record.name].created_at)) {
+          uniqueProfiles[record.name] = record;
+        }
+      });
+
+      setProfiles(Object.values(uniqueProfiles));
+    } catch (error) {
+      console.error('Search error:', error);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  // Only search when user explicitly submits
+  useEffect(() => {
+    if (searchQuery.trim()) {
+      performSemanticSearch(searchQuery);
+    } else {
+      loadProfiles();
+    }
+  }, [searchQuery, user]);
+
+  const handleSearch = () => {
+    setSearchQuery(searchInput);
+  };
+
+  const filteredProfiles = profiles;
 
   if (loading) {
     return (
@@ -126,13 +152,19 @@ export default function LookupScreen({ navigation }) {
           <Ionicons name="search" size={18} color={colors.placeholder} style={styles.searchIcon} />
           <TextInput
             style={[styles.searchInput, { color: colors.text }]}
-            placeholder="Search..."
+            placeholder="Search by name, features, location..."
             placeholderTextColor={colors.placeholder}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
+            value={searchInput}
+            onChangeText={setSearchInput}
+            onSubmitEditing={handleSearch}
+            returnKeyType="search"
           />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
+          {searching && <ActivityIndicator size="small" color={colors.accent} style={styles.searchSpinner} />}
+          {searchInput.length > 0 && !searching && (
+            <TouchableOpacity onPress={() => {
+              setSearchInput('');
+              setSearchQuery('');
+            }}>
               <Ionicons name="close-circle" size={18} color={colors.placeholder} />
             </TouchableOpacity>
           )}
@@ -219,6 +251,9 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 15,
+  },
+  searchSpinner: {
+    marginRight: 8,
   },
 
   // List
