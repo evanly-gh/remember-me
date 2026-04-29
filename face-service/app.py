@@ -11,6 +11,10 @@ Models used:
 6. Color Analyzer — pixel-level skin tone, eye color, hair color (no AI)
 """
 
+import os
+os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
+os.environ["HF_HUB_DOWNLOAD_TIMEOUT"] = "60"  # default is 10s, bump it
+
 import io
 import logging
 from typing import Optional

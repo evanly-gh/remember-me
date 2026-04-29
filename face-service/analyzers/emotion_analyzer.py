@@ -1,27 +1,33 @@
 """
-HSEmotion — EfficientNet-B0 for emotion recognition.
+HSEmotion — EfficientNet-B0 fine-tuned for 8-class emotion recognition.
 
-Classifies the dominant emotion in a face image into one of 8 categories:
-Anger, Contempt, Disgust, Fear, Happiness, Neutral, Sadness, Surprise.
+Uses the published HSEmotion checkpoint (Savchenko et al., enet_b0_8_best_afew),
+which has actual fine-tuned weights for the 8 emotion classes. The previous
+version asked timm for a 1000-class ImageNet checkpoint and reset the head to
+8 randomly-initialized neurons, so the outputs were softmax-over-noise.
 
-Also provides valence (positive/negative) and arousal (calm/excited)
-scores derived from the emotion distribution.
+Classes: Anger, Contempt, Disgust, Fear, Happiness, Neutral, Sadness, Surprise.
+
+Also provides valence (positive/negative) and arousal (calm/excited) scores
+derived from the emotion distribution.
+
+Install: pip install hsemotion
 """
 
+from contextlib import contextmanager
 from typing import Any
 
 import numpy as np
 import torch
-import torch.nn as nn
-from PIL import Image
-from torchvision import transforms
 
 try:
-    import timm
-    HAS_TIMM = True
+    from hsemotion.facial_emotions import HSEmotionRecognizer
+    HAS_HSEMOTION = True
 except ImportError:
-    HAS_TIMM = False
+    HAS_HSEMOTION = False
 
+# Order MUST match the class order produced by enet_b0_8_best_afew.
+# HSEmotion's 8-class AffectNet/AFEW models use alphabetical order.
 EMOTION_LABELS = [
     "anger", "contempt", "disgust", "fear",
     "happiness", "neutral", "sadness", "surprise",
@@ -51,58 +57,83 @@ AROUSAL_MAP = {
     "surprise": 0.9,
 }
 
-TRANSFORM = transforms.Compose([
-    transforms.Resize((260, 260)),
-    transforms.CenterCrop(224),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-])
+HSEMOTION_MODEL_NAME = "enet_b0_8_best_afew"
+
+
+@contextmanager
+def _legacy_torch_load():
+    """Temporarily make torch.load default to weights_only=False.
+
+    PyTorch 2.6 changed the default to weights_only=True. The HSEmotion
+    checkpoint is pickled as a full timm.models.efficientnet.EfficientNet
+    object (not a clean state dict), so the safe unpickler refuses to
+    deserialize it. We trust this checkpoint (it comes from the published
+    HSEmotion repo and was already vetted by the pip install), so we opt
+    back into legacy loading — scoped to just the HSEmotion init so the
+    rest of the process keeps the safer default.
+    """
+    original_load = torch.load
+
+    def _patched_load(*args, **kwargs):
+        kwargs.setdefault("weights_only", False)
+        return original_load(*args, **kwargs)
+
+    torch.load = _patched_load
+    try:
+        yield
+    finally:
+        torch.load = original_load
 
 
 class EmotionAnalyzer:
     def __init__(self):
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model = self._load_model()
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.recognizer = self._load_model()
 
-    def _load_model(self) -> nn.Module:
-        if not HAS_TIMM:
-            print("[EmotionAnalyzer] timm not installed — using fallback CNN")
-            return self._fallback_model()
+    def _load_model(self):
+        if not HAS_HSEMOTION:
+            print(
+                "[EmotionAnalyzer] hsemotion not installed — emotion outputs "
+                "will be 'unknown'. Install with: pip install hsemotion"
+            )
+            return None
 
         try:
-            # Try HSEmotion pre-trained model
-            model = timm.create_model(
-                "tf_efficientnet_b0_ns",
-                pretrained=True,
-                num_classes=8,
-            )
-        except Exception as e:
-            print(f"[EmotionAnalyzer] Could not load EfficientNet: {e}")
-            model = timm.create_model(
-                "tf_efficientnet_b0_ns",
-                pretrained=False,
-                num_classes=8,
-            )
-
-        model.to(self.device).eval()
-        return model
-
-    def _fallback_model(self) -> nn.Module:
-        """Simple fallback if timm is not available."""
-        from torchvision import models
-        model = models.mobilenet_v2(weights=None)
-        model.classifier[1] = nn.Linear(model.last_channel, 8)
-        model.to(self.device).eval()
-        return model
+            with _legacy_torch_load():
+                return HSEmotionRecognizer(
+                    model_name=HSEMOTION_MODEL_NAME,
+                    device=self.device,
+                )
+        except Exception as exc:
+            print(f"[EmotionAnalyzer] Could not load HSEmotion: {exc}")
+            return None
 
     def analyze(self, img_rgb: np.ndarray) -> dict[str, Any]:
-        pil = Image.fromarray(img_rgb)
-        tensor = TRANSFORM(pil).unsqueeze(0).to(self.device)
+        if self.recognizer is None:
+            return self._empty_result()
 
-        with torch.no_grad():
-            logits = self.model(tensor)[0]
+        try:
+            # logits=False → returns post-softmax probabilities.
+            # HSEmotionRecognizer handles its own resize/normalize/preproc.
+            _, scores = self.recognizer.predict_emotions(img_rgb, logits=False)
+        except Exception as exc:
+            print(f"[EmotionAnalyzer] Inference failed: {exc}")
+            return self._empty_result()
 
-        probs = torch.softmax(logits, dim=0).cpu().numpy()
+        probs = np.asarray(scores, dtype=float).flatten()
+        if probs.size != len(EMOTION_LABELS):
+            print(
+                f"[EmotionAnalyzer] Unexpected score length: {probs.size} "
+                f"(expected {len(EMOTION_LABELS)}). Check that "
+                f"{HSEMOTION_MODEL_NAME} still produces 8 classes in this order."
+            )
+            return self._empty_result()
+
+        # Defensive renormalization. With logits=False this is a no-op, but
+        # guards against future API drift in the hsemotion package.
+        total = probs.sum()
+        if total > 0:
+            probs = probs / total
 
         emotion_scores = {
             label: round(float(probs[i]), 3)
@@ -139,4 +170,16 @@ class EmotionAnalyzer:
                 else "negative" if valence < -0.2
                 else "neutral"
             ),
+        }
+
+    @staticmethod
+    def _empty_result() -> dict[str, Any]:
+        return {
+            "primary_emotion": "unknown",
+            "emotion_confidence": 0.0,
+            "secondary_emotion": "unknown",
+            "emotion_scores": {label: 0.0 for label in EMOTION_LABELS},
+            "valence": 0.0,
+            "arousal": 0.0,
+            "mood": "unknown",
         }
