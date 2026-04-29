@@ -1,176 +1,94 @@
-# HCP Project Setup Guide (From Zero)
+# RememberMe
 
-This guide is for a brand-new machine where nothing is installed yet.
+RememberMe is a mobile contact manager with photo capture, face analysis, Supabase-backed storage, and a Python face-analysis service.
 
-It covers:
-1. Everything to install manually
-2. Every account to create
-3. All required environment variables
-4. Exact terminal commands and where to run them
-5. How to run all services together
+## For Regular Users
 
-## 1. Architecture Overview
+### What You Can Do
 
-This project has 3 local services plus hosted Supabase:
+- Sign up and log in with the app.
+- Add a person with a photo, name, notes, location, date, and optional relationship details.
+- Capture a photo from the Add screen and automatically attach facial analysis data to the saved record.
+- Browse saved contacts in the Contacts tab.
+- Search contacts by name or by facial traits such as glasses, beard, emotion, hair color, face shape, and age range.
+- Open a contact and update the profile later from the edit screen.
+- Switch app settings from the Settings tab.
 
-1. Expo React Native app (mobile client)
-Path: `client/`
+### How To Use It
 
-2. Node.js Express server (API gateway/proxy)
-Path: `server/`
+1. Open the app and sign in.
+2. Go to the Add tab.
+3. Enter the person's name and any extra details.
+4. Tap the photo area to take a picture.
+5. Save the record.
+6. Use the Contacts tab to search, review, and edit saved profiles.
 
-3. Python FastAPI face analysis service (ML models)
-Path: `face-service/`
+## For Developers
 
-4. Supabase (hosted: auth, database, storage)
+### Project Layout
 
-Request flow:
-1. App sends image to Node at `/analyze-face`
-2. Node forwards to Python at `/analyze-base64`
-3. Python runs models and returns `{ success: true, data: {...} }`
-4. App stores results in Supabase
+- `client/` - Expo React Native app
+- `server/` - Node.js Express API that forwards face-analysis requests
+- `face-service/` - Python FastAPI face-analysis microservice
+- Supabase - authentication, database, and storage
 
-## 2. Accounts You Must Create
+### Dependencies
 
-Create these first before running code.
+Install these before running the project:
 
-### 2.1 Supabase (Required)
+- Git
+- Node.js 20 or newer
+- Python 3.11
+- Expo Go on a phone, or simulator support if you want to test the mobile app
+- Optional: Docker Desktop if you want to run the face service in a container locally
 
-1. Sign up at https://supabase.com
-2. Create a new project
-3. Save:
-	- Project URL
-	- Anon public key
-4. In Supabase SQL Editor, create your `people` table and policies used by the app.
-5. In Supabase Storage, create bucket `photos`.
+You also need accounts and project setup for:
 
-Minimum table columns used by app screens:
-1. `id` (uuid / primary key)
-2. `user_id`
-3. `name`
-4. `photo_url`
-5. `event`
-6. `location`
-7. `date`
-8. `notes`
-9. `title`
-10. `facial_details` (json/jsonb)
-11. `created_at`
+- Supabase
+- Hugging Face, if you want to test or deploy the face service as a Space
 
-### 2.2 Hugging Face (Recommended for deployed face-service)
+The main package dependencies are listed in:
 
-1. Sign up at https://huggingface.co
-2. Create a new Space
-3. Space type: Docker
-4. Point it to the contents of `face-service/`
+- `client/package.json`
+- `server/package.json`
+- `face-service/requirements.txt`
 
-You can skip Hugging Face for local development and run face-service on localhost.
+### Environment Variables
 
-### 2.3 Expo Account (Optional but recommended)
+Create `client/.env` with:
 
-1. Sign up at https://expo.dev
-2. Needed if you want cloud builds and easier device workflows.
-
-## 3. Software To Install (Brand-New Machine)
-
-Install in this order.
-
-### 3.1 Git
-
-Download and install:
-https://git-scm.com/download/win
-
-Verify:
-
-```powershell
-git --version
+```dotenv
+EXPO_PUBLIC_SUPABASE_URL=https://<your-project-ref>.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=<your-supabase-anon-key>
+EXPO_PUBLIC_FACE_ANALYSIS_URL=http://<your-node-server>:3000/analyze-face
 ```
 
-### 3.2 Node.js LTS (20+)
+Notes:
 
-Download and install:
-https://nodejs.org/en/download
+- The client talks to the Node server, not directly to the Python service.
+- If you test on a physical phone, `localhost` points to the phone, so use your computer's LAN IP instead.
 
-Verify:
-
-```powershell
-node -v
-npm -v
-```
-
-### 3.3 Python 3.11
-
-Download and install:
-https://www.python.org/downloads/
-
-Important during install:
-1. Check "Add python.exe to PATH"
-2. Install pip
-
-Verify:
+Set this environment variable for the Node server:
 
 ```powershell
-python --version
-pip --version
+$env:FACE_SERVICE_URL="http://localhost:8000"
 ```
 
-### 3.4 Visual C++ Build Tools (recommended on Windows for some Python packages)
+If you point the server at a Hugging Face Space, set `FACE_SERVICE_URL` to that Space URL instead.
 
-Install:
-https://visualstudio.microsoft.com/visual-cpp-build-tools/
+The Python face service does not require a separate environment file for local development.
 
-Select:
-1. Desktop development with C++
-2. Windows 10/11 SDK
+### Install Dependencies
 
-### 3.5 Optional: Docker Desktop
-
-Needed only if you want to run face-service via Docker locally.
-https://www.docker.com/products/docker-desktop/
-
-### 3.6 Expo Go on Phone
-
-Install Expo Go:
-https://expo.dev/client
-
-## 4. Get the Project Code
-
-From a terminal, run:
-
-```powershell
-cd C:\Users\<your-user>\OneDrive\Documents\VSCode
-git clone <your-repo-url> HCP
-cd HCP
-```
-
-If you already have the project, just go to root:
-
-```powershell
-cd C:\Users\evanl\OneDrive\Documents\VSCode\HCP
-```
-
-### START HERE IF YOU ALREADY HAVE (Node, Git, Supabase, HuggingFace, ExpoGo) setup
-## 5. Install Dependencies (All Folders)
-
-Run these exactly where shown.
-
-### 5.1 Install client deps
+From the repository root:
 
 ```powershell
 cd client
 npm install
-```
 
-### 5.2 Install server deps
-
-```powershell
 cd ..\server
 npm install
-```
 
-### 5.3 Create Python virtual env and install face-service deps
-
-```powershell
 cd ..\face-service
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -178,313 +96,102 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-If activation is blocked by execution policy:
+If PowerShell blocks virtual environment activation:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\.venv\Scripts\Activate.ps1
 ```
 
-## 6. Environment Variables (skip if already set)
-## 6.1 Client env file (`client/.env`)
+### Run Locally
 
-Create `client/.env` (copy from `client/.env.example`) and set:
+Use three terminals for the full local stack.
 
-```dotenv
-EXPO_PUBLIC_SUPABASE_URL=https://<your-project-ref>.supabase.co
-EXPO_PUBLIC_SUPABASE_ANON_KEY=<your-supabase-anon-key>
-EXPO_PUBLIC_FACE_ANALYSIS_URL=http://localhost:3000/analyze-face
-```
-
-Notes:
-1. Client talks to Node server, not directly to Python.
-2. If testing on a physical phone, `localhost` is your phone itself.
-	- Use your computer LAN IP instead, example:
-	- `http://192.168.1.25:3000/analyze-face`
-
-
-## 6.2 Server env variable (`FACE_SERVICE_URL`)
-
-`server/src/app.js` reads:
-
-1. `FACE_SERVICE_URL` from process env
-2. Falls back to `http://localhost:8000`
-
-For local run in PowerShell (same terminal session):
+Terminal 1 - Python face service:
 
 ```powershell
-$env:FACE_SERVICE_URL="http://localhost:8000"
-```
-
-If using deployed Hugging Face Space:
-
-```powershell
-$env:FACE_SERVICE_URL="https://evanlyhf-rememberme.hf.space"
-```
-
-## 7. Run the Project Locally (3 terminals)
-
-Open 3 terminals.
-
-### Terminal A: Python face-service
-
-```powershell
-cd C:\Users\evanl\OneDrive\Documents\VSCode\HCP\face-service
+cd C:\Users\evanl\Documents\VSCode\HCP\face-service
 .\.venv\Scripts\Activate.ps1
 uvicorn app:app --host 0.0.0.0 --port 8000
 ```
 
-Expected health check:
+Check it with:
 
 ```powershell
 curl http://localhost:8000/health
 ```
 
-Should return:
-
-```json
-{"status":"ok"}
-```
-
-### Terminal B: Node server
+Terminal 2 - Node server:
 
 ```powershell
-cd C:\Users\evanl\OneDrive\Documents\VSCode\HCP\server
+cd C:\Users\evanl\Documents\VSCode\HCP\server
 $env:FACE_SERVICE_URL="http://localhost:8000"
 npm start
 ```
 
-Expected test:
+Check it with:
 
 ```powershell
 curl http://localhost:3000/hello
 ```
 
-### Terminal C: Expo client
+Terminal 3 - Expo client:
 
 ```powershell
-cd C:\Users\evanl\OneDrive\Documents\VSCode\HCP\client
+cd C:\Users\evanl\Documents\VSCode\HCP\client
 npm start
 ```
 
-Then:
-1. Scan QR code with Expo Go
-2. Login/sign up in app
-3. Take a photo in Record screen
-4. Confirm `facial_details` is saved in Supabase row
+### Test With a Hugging Face Space
 
-## 8. Deploy face-service to Hugging Face Spaces
+Use this path if you want to avoid running the Python service locally.
 
-Folder to deploy: `face-service/`
-
-Important files already present:
-1. `face-service/Dockerfile`
-2. `face-service/README.md` (HF Space metadata)
-
-Steps:
-1. Create new Hugging Face Space (Docker SDK)
-2. Push `face-service/` contents
-3. Wait for build to complete
-4. Test health endpoint:
-	- `https://<your-space>.hf.space/health`
-5. Point Node to space URL:
-	- `FACE_SERVICE_URL=https://<your-space>.hf.space`
-
-## 9. API Endpoints Summary
-
-### Node server (`server/src/app.js`)
-
-1. `GET /hello`
-2. `POST /analyze-face`
-
-Request body:
-
-```json
-{ "image": "<base64 image>" }
-```
-
-### Python face-service (`face-service/app.py`)
-
-1. `GET /health`
-2. `POST /analyze` (multipart file)
-3. `POST /analyze-base64` (JSON with base64)
-
-Response shape from Python:
-
-```json
-{
-  "success": true,
-  "data": {
-	 "gender": "male",
-	 "age_range": "20-29",
-	 "primary_emotion": "neutral",
-	 "face_shape": "oval"
-  }
-}
-```
-
-## 10. One-Time Verification Checklist
-
-1. `face-service` starts with no import errors
-2. `GET http://localhost:8000/health` works
-3. `server` starts and prints face service URL
-4. `GET http://localhost:3000/hello` works
-5. Expo app loads on device/emulator
-6. Photo capture works
-7. Analyze request returns `success: true`
-8. Supabase row inserted into `people`
-9. `facial_details` contains analysis JSON
-
-## 11. Common Issues and Fixes
-
-### "Import cv2/fastapi/numpy could not be resolved"
-
-Cause: Python environment not selected or packages not installed.
-
-Fix:
-1. Activate `.venv`
-2. `pip install -r requirements.txt`
-3. In VS Code, select interpreter from `face-service/.venv`.
-
-### Expo app on phone cannot reach localhost
-
-Use your computer LAN IP in `EXPO_PUBLIC_FACE_ANALYSIS_URL`.
-
-### Node cannot reach Python service
-
-Check `FACE_SERVICE_URL` and confirm `/health` works at that URL.
-
-### First analysis request is slow
-
-Expected. Models are lazy-loaded on first call.
-
-## 12. What Is No Longer Required
-
-AWS Rekognition credentials are no longer needed for the new pipeline.
-The old Rekognition scripts can remain in repo for reference, but current runtime path is Node -> Python service -> local models.
-
-# HF vs Local testing
-You do not need to run the Python face-service locally if the HF Space is running.
-
-If you want the full local setup instead of HF:
-
-In face-service:
-create/activate the Python venv
-pip install -r requirements.txt
-uvicorn app:app --host 0.0.0.0 --port 8000
-In server:
-set FACE_SERVICE_URL=http://localhost:8000
-npm start
-In client:
-set EXPO_PUBLIC_FACE_ANALYSIS_URL to your Node server URL
-npm start
-
-
-### 5.1 Install client deps
+1. Create a Hugging Face Space using the Docker option.
+2. Deploy the contents of `face-service/`.
+3. Wait for the Space to finish building.
+4. Confirm the health endpoint responds at `https://<your-space>.hf.space/health`.
+5. Point the Node server to the Space:
 
 ```powershell
-cd client
-npm install
+$env:FACE_SERVICE_URL="https://<your-space>.hf.space"
 ```
 
-### 5.2 Install server deps
+6. Start the Node server with `npm start`.
+7. Start the Expo client with `npm start`.
 
-```powershell
-cd ..\server
-npm install
-```
+### Useful Endpoints
 
-### 5.3 Create Python virtual env and install face-service deps
+- `GET /hello` on the Node server
+- `POST /analyze-face` on the Node server
+- `GET /health` on the Python face service
+- `POST /analyze` on the Python face service
+- `POST /analyze-base64` on the Python face service
 
-```powershell
-cd ..\face-service
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-```
+### Data Requirements
 
-If activation is blocked by execution policy:
+Supabase needs a `people` table and a `photos` storage bucket. The app expects fields such as:
 
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\.venv\Scripts\Activate.ps1
-```
+- `id`
+- `user_id`
+- `name`
+- `photo_url`
+- `event`
+- `location`
+- `date`
+- `notes`
+- `title`
+- `facial_details`
+- `created_at`
 
-## 6. Environment Variables (skip if already set)
-## 6.1 Client env file (`client/.env`)
+### Runtime Flow
 
-Create `client/.env` (copy from `client/.env.example`) and set:
+1. The app captures an image and saves contact data to Supabase.
+2. The client sends the image to the Node server at `/analyze-face`.
+3. The Node server forwards the request to the Python service at `/analyze-base64`.
+4. The Python service returns facial analysis JSON.
+5. The client stores that analysis in `facial_details` for the saved record.
 
-```dotenv
-EXPO_PUBLIC_SUPABASE_URL=https://<your-project-ref>.supabase.co
-EXPO_PUBLIC_SUPABASE_ANON_KEY=<your-supabase-anon-key>
-EXPO_PUBLIC_FACE_ANALYSIS_URL=http://localhost:3000/analyze-face
-```
+### Notes
 
-Notes:
-1. Client talks to Node server, not directly to Python.
-2. If testing on a physical phone, `localhost` is your phone itself.
-	- Use your computer LAN IP instead, example:
-	- `http://192.168.1.25:3000/analyze-face`
-
-
-## 6.2 Server env variable (`FACE_SERVICE_URL`)
-
-`server/src/app.js` reads:
-
-1. `FACE_SERVICE_URL` from process env
-2. Falls back to `http://localhost:8000`
-
-For local run in PowerShell (same terminal session):
-
-```powershell
-$env:FACE_SERVICE_URL="http://localhost:8000"
-```
-
-If using deployed Hugging Face Space:
-
-```powershell
-$env:FACE_SERVICE_URL="https://evanlyhf-rememberme.hf.space"
-```
-Skip terminal A in part 7 if you do this.
-
-## 7. Run the Project Locally (3 terminals)
-
-Open 3 terminals for the face-service, client, and server
-
-### Terminal A: Python face-service
-```powershell
-cd C:\Users\evanl\OneDrive\Documents\VSCode\HCP\face-service
-.\.venv\Scripts\Activate.ps1
-uvicorn app:app --host 0.0.0.0 --port 8000
-```
-
-Expected health check:
-curl http://localhost:8000/health
-
-Should return:
-
-```json
-{"status":"ok"}
-```
-
-### Terminal B: Node server
-
-```powershell
-cd C:\Users\evanl\OneDrive\Documents\VSCode\HCP\server
-$env:FACE_SERVICE_URL="http://localhost:8000"
-npm start
-```
-
-Expected test:
-
-```powershell
-curl http://localhost:3000/hello
-```
-
-### Terminal C: Expo client
-```powershell
-cd C:\Users\evanl\OneDrive\Documents\VSCode\HCP\client
-npm start
-```
+- The face-analysis models are lazy-loaded, so the first request can be slow.
+- AWS Rekognition is no longer part of the current runtime path.
