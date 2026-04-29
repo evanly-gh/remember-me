@@ -9,6 +9,7 @@ import {
   Image,
   ActivityIndicator,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,6 +24,7 @@ export default function EditProfileScreen({ route, navigation }) {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const { user } = useAuth();
   const { colors } = useTheme();
@@ -85,7 +87,13 @@ export default function EditProfileScreen({ route, navigation }) {
       Alert.alert('Error', 'Failed to load profile records');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadRecords();
   };
 
   const handleSave = async () => {
@@ -256,7 +264,11 @@ export default function EditProfileScreen({ route, navigation }) {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={[styles.container, { backgroundColor: colors.background }]} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={[styles.container, { backgroundColor: colors.background }]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
+      >
         {/* Hero section */}
         <View style={styles.heroSection}>
           {selectedPhoto?.photo_url ? (
