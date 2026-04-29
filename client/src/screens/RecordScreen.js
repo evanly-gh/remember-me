@@ -20,6 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { generateEmbedding, buildSearchableText } from '../lib/embeddings';
 
 const DETAIL_FIELDS = [
   { key: 'title', label: 'Relation', placeholder: 'e.g., Friend, Colleague', icon: 'person-outline' },
@@ -178,6 +179,14 @@ export default function RecordScreen({ navigation }) {
       if (photoBase64 && process.env.EXPO_PUBLIC_FACE_ANALYSIS_URL && insertedData?.id) {
         const recordId = insertedData.id;
         const imageData = photoBase64;
+        const contactData = {
+          name: name.trim(),
+          title: title.trim(),
+          event: event.trim(),
+          location: location.trim(),
+          notes: notes.trim(),
+        };
+
         fetch(process.env.EXPO_PUBLIC_FACE_ANALYSIS_URL, {
           method: 'POST',
           headers: {
@@ -189,10 +198,36 @@ export default function RecordScreen({ navigation }) {
           .then((res) => res.ok ? res.json() : null)
           .then(async (result) => {
             if (result) {
+              // Update facial_details
               await supabase
                 .from('people')
                 .update({ facial_details: result })
                 .eq('id', recordId);
+
+              // Generate and store embedding for semantic search
+              try {
+                const searchableText = buildSearchableText({
+                  ...contactData,
+                  facial_details: result
+                });
+
+                const embedding = await generateEmbedding(searchableText);
+
+                if (embedding) {
+                  await supabase
+                    .from('people')
+                    .update({
+                      embedding,
+                      searchable_text: searchableText
+                    })
+                    .eq('id', recordId);
+
+                  console.log('Embedding generated successfully');
+                }
+              } catch (embeddingError) {
+                console.warn('Embedding generation failed:', embeddingError.message);
+                // Don't fail the whole operation if embedding fails
+              }
             }
           })
           .catch((err) => {

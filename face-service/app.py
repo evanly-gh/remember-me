@@ -52,14 +52,20 @@ color_analyzer: Optional[ColorAnalyzer] = None
 
 def _to_json_safe(value):
     """Convert numpy scalars/arrays and nested structures into JSON-safe types."""
+    # Handle numpy types first (before dict/list checks)
+    if isinstance(value, (np.ndarray,)):
+        return value.tolist()
+    if isinstance(value, (np.integer, np.floating)):
+        return value.item()
+    if isinstance(value, (np.bool_,)):
+        return bool(value)
+    if isinstance(value, np.generic):
+        return value.item()
+    # Handle nested structures
     if isinstance(value, dict):
         return {str(k): _to_json_safe(v) for k, v in value.items()}
     if isinstance(value, (list, tuple, set)):
         return [_to_json_safe(v) for v in value]
-    if isinstance(value, np.ndarray):
-        return value.tolist()
-    if isinstance(value, np.generic):
-        return value.item()
     return value
 
 
