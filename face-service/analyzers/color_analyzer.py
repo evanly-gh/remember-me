@@ -5,8 +5,8 @@ BiSeNet and landmarks from MediaPipe.
 Determines:
 - Skin tone (Fitzpatrick scale, LAB lightness, hex color)
 - Eye color (hue classification from iris region)
-- Hair color (K-means dominant color from hair mask)
-- Hair texture hint from FFT frequency analysis
+- Hair color (LAB-trimmed median over hair mask)
+- Hair texture from local intensity variation (Laplacian std over eroded mask)
 - Lip color
 """
 
@@ -15,7 +15,8 @@ from typing import Any
 import cv2
 import numpy as np
 
-# Fitzpatrick scale boundaries based on LAB L* channel
+# Fitzpatrick scale boundaries based on LAB L* channel (true 0–100 range).
+# OpenCV's uint8 LAB stores L scaled to 0–255, so we rescale before lookup.
 FITZPATRICK_SCALE = [
     (85, 100, "Type I - Very Fair"),
     (70, 85, "Type II - Fair"),
@@ -34,6 +35,12 @@ EYE_COLOR_RANGES = {
     "amber": {"h_range": (15, 25), "s_min": 80},
 }
 
+# Hair-texture thresholds on std(Laplacian) computed over the *eroded* hair
+# mask (so the mask boundary itself doesn't contribute high-frequency energy).
+# These are reasonable starting points — tune on your own dataset.
+HAIR_TEXTURE_CURLY_THRESHOLD = 25.0
+HAIR_TEXTURE_WAVY_THRESHOLD = 15.0
+
 
 class ColorAnalyzer:
     def __init__(self):
@@ -50,14 +57,28 @@ class ColorAnalyzer:
         h, w = img_rgb.shape[:2]
         result: dict[str, Any] = {}
 
+        # Coerce masks to boolean so fancy-indexing selects pixels rather
+        # than misinterpreting uint8 0/255 values as integer indices.
+        if skin_mask is not None:
+            skin_mask = skin_mask.astype(bool)
+        if hair_mask is not None:
+            hair_mask = hair_mask.astype(bool)
+        if lip_mask is not None:
+            lip_mask = lip_mask.astype(bool)
+
         # ── Skin Tone ────────────────────────────────────────────────
         if skin_mask is not None and skin_mask.sum() > 100:
             skin_lab = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2LAB)
             skin_pixels = skin_lab[skin_mask]
 
-            mean_l = float(np.mean(skin_pixels[:, 0]))
-            mean_a = float(np.mean(skin_pixels[:, 1]))
-            mean_b = float(np.mean(skin_pixels[:, 2]))
+            # OpenCV uint8 LAB stores L in 0–255 and a/b offset by +128.
+            # Rescale to the conventional ranges (L* in 0–100, a*/b* in
+            # roughly -128..127) so the Fitzpatrick bins and undertone
+            # thresholds operate in standard units.
+            mean_l_raw = float(np.mean(skin_pixels[:, 0]))
+            mean_l = mean_l_raw * 100.0 / 255.0
+            mean_a = float(np.mean(skin_pixels[:, 1])) - 128.0
+            mean_b = float(np.mean(skin_pixels[:, 2])) - 128.0
 
             # Fitzpatrick type
             fitz = "Unknown"
@@ -79,10 +100,12 @@ class ColorAnalyzer:
                 "rgb": avg_rgb.tolist(),
             }
 
-            # Undertone (warm/cool/neutral)
-            if mean_b > 140:
+            # Undertone (warm/cool/neutral). Now that b* is centered on 0,
+            # positive b* leans yellow (warm) and negative b* leans blue
+            # (cool). Thresholds adjusted from the old 0–255 scale.
+            if mean_b > 12:
                 result["skin_undertone"] = "warm"
-            elif mean_b < 120:
+            elif mean_b < -8:
                 result["skin_undertone"] = "cool"
             else:
                 result["skin_undertone"] = "neutral"
@@ -103,81 +126,10 @@ class ColorAnalyzer:
 
         # ── Hair Color ───────────────────────────────────────────────
         if hair_mask is not None and hair_mask.sum() > 200:
-            hair_pixels = img_rgb[hair_mask]
+            hair_color_info = self._estimate_hair_color(img_rgb, hair_mask)
+            result["hair_color"] = hair_color_info
 
-            # K-means for dominant color
-            pixels_float = hair_pixels.astype(np.float32)
-            # Sample up to 5000 pixels for speed
-            if len(pixels_float) > 5000:
-                idx = np.random.choice(len(pixels_float), 5000, replace=False)
-                pixels_float = pixels_float[idx]
-
-            criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
-            _, labels, centers = cv2.kmeans(
-                pixels_float, 2, None, criteria, 3, cv2.KMEANS_PP_CENTERS
-            )
-            # Pick the cluster with more pixels
-            counts = np.bincount(labels.flatten())
-            dominant_center = centers[np.argmax(counts)].astype(int)
-            hex_hair = "#{:02x}{:02x}{:02x}".format(*dominant_center)
-
-            # Classify by luminance
-            hair_hsv = cv2.cvtColor(
-                dominant_center.reshape(1, 1, 3).astype(np.uint8),
-                cv2.COLOR_RGB2HSV
-            )[0, 0]
-            h_val, s_val, v_val = int(hair_hsv[0]), int(hair_hsv[1]), int(hair_hsv[2])
-
-            if v_val < 50:
-                hair_color_name = "black"
-            elif v_val > 180 and s_val < 40:
-                hair_color_name = "gray/white"
-            elif h_val < 15 or h_val > 165:
-                hair_color_name = "red/auburn"
-            elif 15 <= h_val < 25 and v_val > 150:
-                hair_color_name = "blond"
-            elif 10 <= h_val < 25:
-                hair_color_name = "brown"
-            else:
-                hair_color_name = "brown"
-
-            result["hair_color"] = {
-                "name": hair_color_name,
-                "hex": hex_hair,
-                "rgb": dominant_center.tolist(),
-            }
-
-            # Hair texture from FFT (frequency analysis)
-            hair_gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
-            hair_region = hair_gray.copy()
-            hair_region[~hair_mask] = 0
-
-            # Crop to hair bounding box for FFT
-            rows = np.any(hair_mask, axis=1)
-            cols = np.any(hair_mask, axis=0)
-            if rows.any() and cols.any():
-                rmin, rmax = np.where(rows)[0][[0, -1]]
-                cmin, cmax = np.where(cols)[0][[0, -1]]
-                crop = hair_region[rmin:rmax + 1, cmin:cmax + 1].astype(np.float32)
-
-                if crop.shape[0] > 10 and crop.shape[1] > 10:
-                    f_transform = np.fft.fft2(crop)
-                    f_shift = np.fft.fftshift(f_transform)
-                    magnitude = np.log1p(np.abs(f_shift))
-                    high_freq_ratio = np.sum(magnitude > np.mean(magnitude) + np.std(magnitude))
-                    total_freq = magnitude.size
-                    hf_ratio = high_freq_ratio / total_freq if total_freq else 0
-
-                    if hf_ratio > 0.25:
-                        result["hair_texture"] = "curly/coily"
-                    elif hf_ratio > 0.15:
-                        result["hair_texture"] = "wavy"
-                    else:
-                        result["hair_texture"] = "straight"
-                else:
-                    result["hair_texture"] = "unknown"
-            else:
-                result["hair_texture"] = "unknown"
+            result["hair_texture"] = self._estimate_hair_texture(img_rgb, hair_mask)
         else:
             result["hair_color"] = {"name": "unknown"}
             result["hair_texture"] = "unknown"
@@ -213,6 +165,98 @@ class ColorAnalyzer:
             result["lip_color"] = {"shade": "unknown"}
 
         return result
+
+    # ------------------------------------------------------------------
+    # Hair color helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _estimate_hair_color(
+        img_rgb: np.ndarray, hair_mask: np.ndarray
+    ) -> dict[str, Any]:
+        """Estimate dominant hair color via LAB-lightness-trimmed median.
+
+        Why median + L*-trim instead of k=2 k-means:
+        - K-means with k=2 splits highlight vs shadow within a single hair
+          color, so the "bigger cluster" can flip between photos of the same
+          person depending on lighting. Median is robust and deterministic.
+        - Trimming the top/bottom 10% of L* drops specular highlights and
+          deep shadows, which are the main outlier sources.
+        """
+        hair_pixels = img_rgb[hair_mask]  # (N, 3) uint8 RGB
+
+        # Trim by LAB L* to drop highlights and shadows.
+        hair_lab = cv2.cvtColor(
+            hair_pixels.reshape(-1, 1, 3), cv2.COLOR_RGB2LAB
+        ).reshape(-1, 3)
+        l_lo, l_hi = np.percentile(hair_lab[:, 0], [10, 90])
+        keep = (hair_lab[:, 0] >= l_lo) & (hair_lab[:, 0] <= l_hi)
+        core_pixels = hair_pixels[keep] if keep.sum() > 50 else hair_pixels
+
+        dominant_rgb = np.median(core_pixels, axis=0)
+        dominant_rgb = np.clip(dominant_rgb, 0, 255).astype(np.uint8)
+
+        hex_hair = "#{:02x}{:02x}{:02x}".format(*dominant_rgb)
+
+        hair_hsv = cv2.cvtColor(
+            dominant_rgb.reshape(1, 1, 3), cv2.COLOR_RGB2HSV
+        )[0, 0]
+        h_val, s_val, v_val = int(hair_hsv[0]), int(hair_hsv[1]), int(hair_hsv[2])
+
+        # Classification cascade — order matters. Falls through to "unknown"
+        # rather than a default of "brown" so mask leakage / unusual tints
+        # are detectable downstream.
+        if v_val < 45 and s_val < 60:
+            hair_color_name = "black"
+        elif s_val < 25:
+            # Low saturation across the V range → gray family.
+            hair_color_name = "gray/white" if v_val > 100 else "dark gray"
+        elif (h_val < 12 or h_val > 168) and s_val > 60:
+            hair_color_name = "red/auburn"
+        elif 18 <= h_val <= 35 and v_val > 160 and s_val < 140:
+            # Blond: yellow hue, high V, and not too saturated (real blond
+            # is desaturated yellow, not orange).
+            hair_color_name = "blond"
+        elif 5 <= h_val <= 30:
+            hair_color_name = "brown" if v_val > 80 else "dark brown"
+        else:
+            hair_color_name = "unknown"
+
+        return {
+            "name": hair_color_name,
+            "hex": hex_hair,
+            "rgb": dominant_rgb.tolist(),
+            "hsv": [h_val, s_val, v_val],
+        }
+
+    @staticmethod
+    def _estimate_hair_texture(
+        img_rgb: np.ndarray, hair_mask: np.ndarray
+    ) -> str:
+        """Estimate hair texture from local intensity variation.
+
+        Computes std(Laplacian) over an *eroded* hair mask. Erosion stays
+        strictly inside the hair region so the mask boundary itself doesn't
+        contribute the high-frequency step edge that the previous FFT-on-
+        zeroed-region implementation was inadvertently measuring.
+        """
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+        inner_mask = cv2.erode(
+            hair_mask.astype(np.uint8), kernel, iterations=2
+        ).astype(bool)
+
+        if inner_mask.sum() < 200:
+            return "unknown"
+
+        hair_gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
+        lap = cv2.Laplacian(hair_gray, cv2.CV_64F, ksize=3)
+        texture_score = float(np.std(lap[inner_mask]))
+
+        if texture_score > HAIR_TEXTURE_CURLY_THRESHOLD:
+            return "curly/coily"
+        if texture_score > HAIR_TEXTURE_WAVY_THRESHOLD:
+            return "wavy"
+        return "straight"
 
     # ------------------------------------------------------------------
     # Eye color helpers
