@@ -21,6 +21,7 @@ primary source for lip geometry/color in color_analyzer.
 """
 
 from typing import Any
+import warnings
 
 import cv2
 import numpy as np
@@ -62,7 +63,6 @@ class ParsingAnalyzer:
         self.processor = None
         self.model = None
         try:
-            self.processor = SegformerImageProcessor.from_pretrained(MODEL_ID)
             self.model = SegformerForSemanticSegmentation.from_pretrained(MODEL_ID)
             self.model.to(self.device).eval()
         except Exception as exc:
