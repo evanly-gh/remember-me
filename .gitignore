@@ -1,2 +1,6 @@
 client/.env
 model/celeba
+
+# Python cache / bytecode
+__pycache__/
+*.py[cod]
