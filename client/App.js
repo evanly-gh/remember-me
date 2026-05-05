@@ -3,7 +3,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, DeviceEventEmitter } from 'react-native';
 
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
@@ -86,6 +86,12 @@ function MainNavigator() {
         options={{
           headerShown: false,
         }}
+        listeners={() => ({
+          tabPress: () => {
+            // Emit global event to notify LookupScreen to clear search
+            DeviceEventEmitter.emit('contactsTabPress');
+          },
+        })}
       />
       <Tab.Screen
         name="Add"

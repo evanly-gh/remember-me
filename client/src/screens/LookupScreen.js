@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { View, TextInput, StyleSheet, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, TextInput, StyleSheet, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator, RefreshControl, DeviceEventEmitter } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
@@ -8,6 +8,14 @@ import { useTheme } from '../context/ThemeContext';
 import { useFocusEffect } from '@react-navigation/native';
 import { generateEmbedding } from '../lib/embeddings';
 
+/**
+ * LookupScreen - Contact search with hybrid approach
+ *
+ * Search strategy:
+ * 1. Exact text matching (priority 1): name, phone, title, location, event, notes
+ * 2. Semantic vector search (priority 2): facial features, descriptive queries
+ * 3. Results merged and deduplicated, exact matches appear first
+ */
 export default function LookupScreen({ navigation }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchInput, setSearchInput] = useState(''); // Separate state for input field
@@ -24,9 +32,24 @@ export default function LookupScreen({ navigation }) {
 
   useFocusEffect(
     useCallback(() => {
-      if (user) loadProfiles();
+      if (user) {
+        // Clear search query and show all contacts when screen is focused
+        setSearchInput('');
+        setSearchQuery('');
+        loadProfiles();
+      }
     }, [user])
   );
+
+  // Clear search when tapping the contacts tab (even when already on this screen)
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener('contactsTabPress', () => {
+      setSearchInput('');
+      setSearchQuery('');
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   const loadProfiles = async () => {
     if (!user) return;
@@ -63,7 +86,7 @@ export default function LookupScreen({ navigation }) {
     loadProfiles();
   };
 
-  // Semantic search using embeddings
+  // Hybrid search: exact matches first, then semantic search
   const performSemanticSearch = async (query) => {
     if (!query.trim()) {
       // Empty query - show all profiles
@@ -74,35 +97,68 @@ export default function LookupScreen({ navigation }) {
     try {
       setSearching(true);
 
-      // Generate embedding for search query
-      const queryEmbedding = await generateEmbedding(query);
+      const resultsMap = new Map(); // Use Map to track by ID and avoid duplicates
+      const queryLower = query.trim();
 
-      if (!queryEmbedding) {
-        // Fallback to keyword search if embedding generation fails
-        console.warn('Embedding generation failed, using local filter');
-        return;
+      // STEP 1: Exact text matching (highest priority)
+      // Search across name, phone, title, location, event, and notes
+      const { data: exactMatches, error: exactError } = await supabase
+        .from('people')
+        .select('*')
+        .eq('user_id', user.id)
+        .or(`name.ilike.%${queryLower}%,phone.ilike.%${queryLower}%,title.ilike.%${queryLower}%,location.ilike.%${queryLower}%,event.ilike.%${queryLower}%,notes.ilike.%${queryLower}%`);
+
+      if (exactError) {
+        console.error('Exact match error:', exactError);
+      } else if (exactMatches) {
+        exactMatches.forEach(record => {
+          resultsMap.set(record.id, { ...record, matchType: 'exact', priority: 1 });
+        });
       }
 
-      // Search using Supabase vector similarity
-      // Convert array to PostgreSQL vector format string
-      const vectorString = `[${queryEmbedding.join(',')}]`;
+      // STEP 2: Semantic search for complex/descriptive queries
+      try {
+        const queryEmbedding = await generateEmbedding(query);
 
-      const { data, error } = await supabase.rpc('search_contacts', {
-        query_embedding: vectorString,
-        match_threshold: 0.3,  // Lower threshold = more results (range: 0-1)
-        match_count: 100,
-        user_id_filter: user.id
+        if (queryEmbedding) {
+          const vectorString = `[${queryEmbedding.join(',')}]`;
+
+          const { data: semanticMatches, error: semanticError } = await supabase.rpc('search_contacts', {
+            query_embedding: vectorString,
+            match_threshold: 0.3,  // Lower threshold = more results (range: 0-1)
+            match_count: 100,
+            user_id_filter: user.id
+          });
+
+          if (semanticError) {
+            console.error('Semantic search error:', semanticError);
+          } else if (semanticMatches) {
+            semanticMatches.forEach(record => {
+              // Only add if not already found via exact match
+              if (!resultsMap.has(record.id)) {
+                resultsMap.set(record.id, { ...record, matchType: 'semantic', priority: 2 });
+              }
+            });
+          }
+        } else {
+          console.warn('Embedding generation failed, using exact matches only');
+        }
+      } catch (embeddingError) {
+        console.warn('Semantic search failed, using exact matches only:', embeddingError.message);
+      }
+
+      // STEP 3: Combine and sort results (exact matches first, then semantic)
+      const allResults = Array.from(resultsMap.values()).sort((a, b) => {
+        // Sort by priority (1 = exact, 2 = semantic), then by created_at
+        if (a.priority !== b.priority) {
+          return a.priority - b.priority;
+        }
+        return new Date(b.created_at) - new Date(a.created_at);
       });
 
-      if (error) {
-        console.error('Semantic search error:', error);
-        // Fallback to showing all profiles
-        return;
-      }
-
-      // Deduplicate by name (keep most recent per person)
+      // STEP 4: Deduplicate by name (keep most recent per person)
       const uniqueProfiles = {};
-      data.forEach(record => {
+      allResults.forEach(record => {
         if (!uniqueProfiles[record.name] ||
             new Date(record.created_at) > new Date(uniqueProfiles[record.name].created_at)) {
           uniqueProfiles[record.name] = record;
@@ -110,8 +166,14 @@ export default function LookupScreen({ navigation }) {
       });
 
       setProfiles(Object.values(uniqueProfiles));
+
+      // Debug logging
+      console.log(`Search: "${query}" → ${exactMatches?.length || 0} exact, ${resultsMap.size - (exactMatches?.length || 0)} semantic, ${Object.keys(uniqueProfiles).length} unique`);
+
     } catch (error) {
       console.error('Search error:', error);
+      // Fallback to showing all profiles on error
+      loadProfiles();
     } finally {
       setSearching(false);
     }
