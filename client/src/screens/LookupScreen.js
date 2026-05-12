@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { View, TextInput, StyleSheet, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator, RefreshControl, DeviceEventEmitter } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,6 +25,9 @@ export default function LookupScreen({ navigation }) {
   const [searching, setSearching] = useState(false);
   const { user } = useAuth();
   const { colors } = useTheme();
+
+  // Track search requests to handle concurrent searches
+  const searchIdRef = useRef(0);
 
   useEffect(() => {
     if (user) loadProfiles();
@@ -78,6 +81,7 @@ export default function LookupScreen({ navigation }) {
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setSearching(false); // Ensure search spinner is cleared
     }
   };
 
@@ -94,6 +98,9 @@ export default function LookupScreen({ navigation }) {
       return;
     }
 
+    // Increment search ID to track this request
+    const currentSearchId = ++searchIdRef.current;
+
     try {
       setSearching(true);
 
@@ -108,6 +115,11 @@ export default function LookupScreen({ navigation }) {
         .eq('user_id', user.id)
         .or(`name.ilike.%${queryLower}%,phone.ilike.%${queryLower}%,title.ilike.%${queryLower}%,location.ilike.%${queryLower}%,event.ilike.%${queryLower}%,notes.ilike.%${queryLower}%`);
 
+      // Check if this search was superseded by a newer one
+      if (currentSearchId !== searchIdRef.current) {
+        return; // Abort this search, a newer one is in progress
+      }
+
       if (exactError) {
         console.error('Exact match error:', exactError);
       } else if (exactMatches) {
@@ -120,15 +132,25 @@ export default function LookupScreen({ navigation }) {
       try {
         const queryEmbedding = await generateEmbedding(query);
 
+        // Check if this search was superseded
+        if (currentSearchId !== searchIdRef.current) {
+          return;
+        }
+
         if (queryEmbedding) {
           const vectorString = `[${queryEmbedding.join(',')}]`;
 
           const { data: semanticMatches, error: semanticError } = await supabase.rpc('search_contacts', {
             query_embedding: vectorString,
-            match_threshold: 0.3,  // Lower threshold = more results (range: 0-1)
+            match_threshold: 0.2,  // Lower threshold = more results (range: 0-1)
             match_count: 100,
             user_id_filter: user.id
           });
+
+          // Check if this search was superseded
+          if (currentSearchId !== searchIdRef.current) {
+            return;
+          }
 
           if (semanticError) {
             console.error('Semantic search error:', semanticError);
@@ -165,17 +187,26 @@ export default function LookupScreen({ navigation }) {
         }
       });
 
-      setProfiles(Object.values(uniqueProfiles));
+      // Only update results if this is still the latest search
+      if (currentSearchId === searchIdRef.current) {
+        setProfiles(Object.values(uniqueProfiles));
 
-      // Debug logging
-      console.log(`Search: "${query}" → ${exactMatches?.length || 0} exact, ${resultsMap.size - (exactMatches?.length || 0)} semantic, ${Object.keys(uniqueProfiles).length} unique`);
+        // Debug logging
+        console.log(`Search: "${query}" → ${exactMatches?.length || 0} exact, ${resultsMap.size - (exactMatches?.length || 0)} semantic, ${Object.keys(uniqueProfiles).length} unique`);
+      }
 
     } catch (error) {
       console.error('Search error:', error);
-      // Fallback to showing all profiles on error
-      loadProfiles();
+      // Only update on error if this is still the latest search
+      if (currentSearchId === searchIdRef.current) {
+        // Fallback to showing all profiles on error
+        loadProfiles();
+      }
     } finally {
-      setSearching(false);
+      // Only clear spinner if this is still the latest search
+      if (currentSearchId === searchIdRef.current) {
+        setSearching(false);
+      }
     }
   };
 
@@ -186,6 +217,12 @@ export default function LookupScreen({ navigation }) {
     } else {
       loadProfiles();
     }
+
+    // Cleanup: if a new search starts or component unmounts, increment search ID
+    // to invalidate any in-flight searches
+    return () => {
+      searchIdRef.current++;
+    };
   }, [searchQuery, user]);
 
   const handleSearch = () => {
@@ -226,6 +263,8 @@ export default function LookupScreen({ navigation }) {
             <TouchableOpacity onPress={() => {
               setSearchInput('');
               setSearchQuery('');
+              setSearching(false); // Ensure spinner is cleared
+              searchIdRef.current++; // Cancel any in-flight searches
             }}>
               <Ionicons name="close-circle" size={18} color={colors.placeholder} />
             </TouchableOpacity>
