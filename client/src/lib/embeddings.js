@@ -6,6 +6,8 @@
 const HF_API_URL = "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction";
 const HF_TOKEN = process.env.EXPO_PUBLIC_HF_API_KEY;
 
+let warnedAboutMissingKey = false;
+
 /**
  * Generate embedding vector from text using Hugging Face API
  * @param {string} text - Text to embed
@@ -18,7 +20,10 @@ export async function generateEmbedding(text, retries = 3) {
   }
 
   if (!HF_TOKEN) {
-    console.warn('HF_API_KEY not found. Embeddings disabled.');
+    if (!warnedAboutMissingKey) {
+      console.warn('EXPO_PUBLIC_HF_API_KEY not set. Embeddings disabled.');
+      warnedAboutMissingKey = true;
+    }
     return null;
   }
 
@@ -130,47 +135,47 @@ export function buildSearchableText(contactData) {
       parts.push(`Demographics: ${demographics.join(', ')}`);
     }
 
-    // Physical appearance
-    if (facial.wearing_glasses || facial.glasses_detected) {
+    // Physical appearance — only fields backed by reliable models:
+    //   ObstructionViT (glasses/sunglasses/mask), SegFormer (hat),
+    //   MediaPipe blendshapes (smiling). Previous FaRL-derived flags
+    //   (has_beard, is_bald, wearing_earrings, heavy_makeup) were noisy
+    //   enough to hurt search quality and have been dropped.
+    if (facial.wearing_glasses) {
       appearance.push('wearing glasses');
     }
 
-    if (facial.has_beard) {
-      appearance.push('has beard');
+    if (facial.wearing_sunglasses) {
+      appearance.push('wearing sunglasses');
     }
 
-    if (facial.wearing_hat || facial.hat_detected) {
+    if (facial.wearing_mask) {
+      appearance.push('wearing mask');
+    }
+
+    if (facial.hat_detected) {
       appearance.push('wearing hat');
     }
 
-    if (facial.is_bald) {
-      appearance.push('bald');
-    }
-
-    if (facial.smiling || facial.smiling_celeba) {
+    if (facial.smiling) {
       appearance.push('smiling');
-    }
-
-    if (facial.wearing_earrings || facial.earring_detected) {
-      appearance.push('wearing earrings');
-    }
-
-    if (facial.heavy_makeup) {
-      appearance.push('wearing makeup');
     }
 
     if (appearance.length > 0) {
       parts.push(`Appearance: ${appearance.join(', ')}`);
     }
 
-    // Hair color
-    const hairColor = facial.hair_color?.name || facial.hair_color_celeba;
-    if (hairColor) {
-      features.push(`${hairColor} hair`);
+    // Hair color comes from pixel-level ColorAnalyzer.
+    if (facial.hair_color?.name) {
+      features.push(`${facial.hair_color.name} hair`);
     }
 
     if (facial.hair_length) {
       features.push(`${facial.hair_length} hair`);
+    }
+
+    // Hair texture from HairTypeViT (curly/dreadlocks/kinky/straight/wavy).
+    if (facial.hair_type) {
+      features.push(`${facial.hair_type} hair texture`);
     }
 
     // Eye color

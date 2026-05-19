@@ -13,7 +13,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Pre-download MediaPipe model at build time so first request is fast
+# Pre-download MediaPipe model at build time so first request is fast.
+# All other models (FairFace, SegFormer, HSEmotion, ObstructionViT,
+# HairTypeViT) are pulled from Hugging Face on first request and cached
+# in /root/.cache/huggingface for the rest of the process lifetime.
 RUN mkdir -p models && \
     wget -q -O models/face_landmarker.task \
     "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task"

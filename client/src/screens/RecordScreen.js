@@ -267,29 +267,28 @@ export default function RecordScreen({ navigation }) {
   if (showCamera) {
     return (
       <View style={styles.cameraContainer}>
-        <CameraView style={styles.camera} facing={cameraFacing} ref={cameraRef}>
-          <SafeAreaView style={styles.cameraOverlay}>
-            <View style={styles.cameraTopRow}>
-              <TouchableOpacity
-                style={styles.cameraCloseButton}
-                onPress={() => setShowCamera(false)}
-              >
-                <Ionicons name="chevron-back" size={28} color="#fff" />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.cameraFlipButton}
-                onPress={() => setCameraFacing(f => f === 'front' ? 'back' : 'front')}
-              >
-                <Ionicons name="camera-reverse-outline" size={26} color="#fff" />
-              </TouchableOpacity>
-            </View>
-            <View style={styles.cameraBottom}>
-              <TouchableOpacity style={styles.shutterButton} onPress={takePicture}>
-                <View style={styles.shutterButtonInner} />
-              </TouchableOpacity>
-            </View>
-          </SafeAreaView>
-        </CameraView>
+        <CameraView style={StyleSheet.absoluteFill} facing={cameraFacing} ref={cameraRef} />
+        <SafeAreaView style={styles.cameraOverlay} pointerEvents="box-none">
+          <View style={styles.cameraTopRow}>
+            <TouchableOpacity
+              style={styles.cameraCloseButton}
+              onPress={() => setShowCamera(false)}
+            >
+              <Ionicons name="chevron-back" size={28} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.cameraFlipButton}
+              onPress={() => setCameraFacing(f => f === 'front' ? 'back' : 'front')}
+            >
+              <Ionicons name="camera-reverse-outline" size={26} color="#fff" />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.cameraBottom}>
+            <TouchableOpacity style={styles.shutterButton} onPress={takePicture}>
+              <View style={styles.shutterButtonInner} />
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
       </View>
     );
   }
@@ -604,7 +603,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   cameraOverlay: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     justifyContent: 'space-between',
   },
   cameraTopRow: {

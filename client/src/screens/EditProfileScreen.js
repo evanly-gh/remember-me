@@ -458,9 +458,20 @@ export default function EditProfileScreen({ route, navigation }) {
                   );
                 }
 
+                // Capitalize the first letter of plain-word values ("male" →
+                // "Male", "warm" → "Warm"). Leaves hex codes (#abc123),
+                // percentages, and numbers untouched because their first
+                // character isn't a lowercase letter.
+                const capitalizeFirst = (s) => {
+                  if (typeof s !== 'string' || !s.length) return s;
+                  return s.charAt(0).toUpperCase() + s.slice(1);
+                };
+
                 const Row = ({ label, value, method }) => {
                   if (value === undefined || value === null || value === '') return null;
-                  const displayVal = typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value);
+                  const displayVal = typeof value === 'boolean'
+                    ? (value ? 'Yes' : 'No')
+                    : capitalizeFirst(String(value));
                   const methodLabel = method ? ` (${method})` : '';
                   return (
                     <>
@@ -479,28 +490,6 @@ export default function EditProfileScreen({ route, navigation }) {
                 const SectionLabel = ({ children }) => (
                   <Text style={[styles.facialSubheader, { color: colors.accent }]}>{children}</Text>
                 );
-
-                const ExpandableSection = ({ title, children }) => {
-                  const [expanded, setExpanded] = useState(false);
-                  return (
-                    <View>
-                      <TouchableOpacity
-                        onPress={() => setExpanded(!expanded)}
-                        style={[styles.fieldRow, { justifyContent: 'space-between', paddingVertical: 14 }]}
-                      >
-                        <Text style={[styles.facialSubheader, { color: colors.accent, marginLeft: 0, paddingLeft: 0 }]}>
-                          {title}
-                        </Text>
-                        <Ionicons
-                          name={expanded ? 'chevron-up' : 'chevron-down'}
-                          size={20}
-                          color={colors.accent}
-                        />
-                      </TouchableOpacity>
-                      {expanded && children}
-                    </View>
-                  );
-                };
 
                 return (
                   <>
@@ -555,20 +544,13 @@ export default function EditProfileScreen({ route, navigation }) {
                     <SectionLabel>Hair</SectionLabel>
                     <Row label="Hair Length" value={d.hair_length} method="SegFormer" />
                     <Row label="Hair Present" value={d.hair_present} method="SegFormer" />
-                    <Row label="Has Bangs" value={d.has_bangs} method="CLIP" />
-                    <Row label="Is Bald" value={d.is_bald} method="CLIP" />
-                    <Row label="Receding Hairline" value={d.receding_hairline} method="CLIP" />
-                    <Row label="Hair Texture (Landmark)" value={d.hair_texture_celeba} method="CLIP" />
-                    {d.hair_texture && d.hair_texture !== d.hair_texture_celeba && (
-                      <Row label="Hair Texture (Pixel)" value={d.hair_texture} method="ColorAnalyzer" />
-                    )}
-                    <Row label="Hair Color (CLIP)" value={d.hair_color_celeba} method="CLIP" />
-                    {d.hair_color_scores && Object.keys(d.hair_color_scores).length > 0 && (
-                      <Row label="Hair Color Scores" value={Object.entries(d.hair_color_scores).map(([k, v]) => `${k}: ${(v * 100).toFixed(1)}%`).join(', ')} method="CLIP" />
+                    <Row label="Hair Texture" value={d.hair_type} method="HairTypeViT" />
+                    {d.hair_type_confidence !== undefined && d.hair_type_confidence > 0 && (
+                      <Row label="Hair Texture Confidence" value={`${(d.hair_type_confidence * 100).toFixed(1)}%`} method="HairTypeViT" />
                     )}
                     {d.hair_color && (
                       <>
-                        <Row label="Hair Color (Pixel)" value={d.hair_color.name} method="ColorAnalyzer" />
+                        <Row label="Hair Color" value={d.hair_color.name} method="ColorAnalyzer" />
                         <Row label="Hair Hex" value={d.hair_color.hex} method="ColorAnalyzer" />
                       </>
                     )}
@@ -580,7 +562,6 @@ export default function EditProfileScreen({ route, navigation }) {
                     <Row label="Eye Spacing" value={d.eye_spacing} method="MediaPipe" />
                     <Row label="Eye Size" value={d.eye_size} method="MediaPipe" />
                     <Row label="Eyes Open" value={d.eyes_open} method="MediaPipe" />
-                    <Row label="Narrow Eyes" value={d.narrow_eyes} method="CLIP" />
                     <Row label="Eye Color" value={d.eye_color} method="ColorAnalyzer" />
 
                     {/* ============ EYEBROWS ============ */}
@@ -589,8 +570,6 @@ export default function EditProfileScreen({ route, navigation }) {
                     <Row label="Eyebrow Arch Height" value={d.eyebrow_arch_height} method="MediaPipe" />
                     <Row label="Eyebrow Thickness" value={d.eyebrow_thickness} method="MediaPipe" />
                     <Row label="Possible Unibrow" value={d.possible_unibrow} method="MediaPipe" />
-                    <Row label="Arched Eyebrows (CLIP)" value={d.arched_eyebrows} method="CLIP" />
-                    <Row label="Bushy Eyebrows (CLIP)" value={d.bushy_eyebrows} method="CLIP" />
 
                     {/* ============ NOSE ============ */}
                     <SectionLabel>Nose</SectionLabel>
@@ -598,8 +577,6 @@ export default function EditProfileScreen({ route, navigation }) {
                     <Row label="Nose Bridge" value={d.nose_bridge} method="MediaPipe" />
                     <Row label="Nose Tip Shape" value={d.nose_tip_shape} method="MediaPipe" />
                     <Row label="Nostril Width" value={d.nostril_width} method="MediaPipe" />
-                    <Row label="Big Nose" value={d.big_nose} method="CLIP" />
-                    <Row label="Pointy Nose" value={d.pointy_nose} method="CLIP" />
 
                     {/* ============ LIPS & MOUTH ============ */}
                     <SectionLabel>Lips & Mouth</SectionLabel>
@@ -609,10 +586,8 @@ export default function EditProfileScreen({ route, navigation }) {
                     <Row label="Cupid's Bow" value={d.cupids_bow} method="MediaPipe" />
                     <Row label="Smile Asymmetry" value={d.smile_asymmetry && `${(d.smile_asymmetry * 100).toFixed(1)}%`} method="MediaPipe" />
                     <Row label="Possible Dimples" value={d.possible_dimples} method="MediaPipe" />
-                    <Row label="Smiling" value={d.smiling_celeba} method="CLIP" />
-                    <Row label="Mouth Open" value={d.mouth_open} method="CLIP" />
-                    <Row label="Wearing Lipstick" value={d.wearing_lipstick} method="CLIP" />
-                    <Row label="Big Lips" value={d.big_lips} method="CLIP" />
+                    <Row label="Smiling" value={d.smiling} method="MediaPipe" />
+                    <Row label="Mouth Open" value={d.blendshapes?.jawOpen !== undefined ? d.blendshapes.jawOpen > 0.3 : undefined} method="MediaPipe" />
                     {d.lip_color && (
                       <>
                         <Row label="Lip Color Shade" value={d.lip_color.shade} method="ColorAnalyzer" />
@@ -631,61 +606,30 @@ export default function EditProfileScreen({ route, navigation }) {
                       </>
                     )}
                     <Row label="Skin Undertone" value={d.skin_undertone} method="ColorAnalyzer" />
-                    <Row label="Wrinkle Level" value={d.wrinkle_level} method="SegFormer" />
-                    <Row label="Skin Texture Score" value={d.skin_texture_score && `${d.skin_texture_score.toFixed(2)}`} method="SegFormer" />
-                    <Row label="Skin Uniformity" value={d.skin_uniformity && `${d.skin_uniformity.toFixed(2)}`} method="SegFormer" />
-                    <Row label="Freckles or Moles" value={d.freckles_or_moles} method="SegFormer" />
-                    <Row label="Pale Skin" value={d.pale_skin} method="CLIP" />
-                    <Row label="Rosy Cheeks" value={d.rosy_cheeks} method="CLIP" />
-                    <Row label="Bags Under Eyes" value={d.bags_under_eyes} method="CLIP" />
-                    <Row label="Chubby Face" value={d.chubby} method="CLIP" />
-                    <Row label="Double Chin" value={d.double_chin} method="CLIP" />
-                    <Row label="High Cheekbones" value={d.high_cheekbones} method="CLIP" />
-                    <Row label="Oval Face" value={d.oval_face_celeba} method="CLIP" />
+                    <Row label="Wrinkle Level" value={d.wrinkle_level} method="SegFormer+OpenCV" />
+                    <Row label="Skin Texture Score" value={d.skin_texture_score && `${d.skin_texture_score.toFixed(2)}`} method="SegFormer+OpenCV" />
+                    <Row label="Skin Uniformity" value={d.skin_uniformity && `${d.skin_uniformity.toFixed(2)}`} method="SegFormer+OpenCV" />
+                    <Row label="Freckles or Moles" value={d.freckles_or_moles} method="SegFormer+OpenCV" />
                     {d.skin_tone?.hex_color && (
                       <Row label="Skin Hex Color" value={d.skin_tone.hex_color} method="ColorAnalyzer" />
                     )}
 
                     {/* ============ ACCESSORIES ============ */}
                     <SectionLabel>Accessories</SectionLabel>
-                    <Row label="Wearing Glasses" value={d.wearing_glasses || d.glasses_detected} method={d.glasses_detected ? 'SegFormer' : 'CLIP'} />
-                    <Row label="Wearing Hat" value={d.wearing_hat || d.hat_detected} method={d.hat_detected ? 'SegFormer' : 'CLIP'} />
-                    <Row label="Wearing Earrings" value={d.wearing_earrings} method="CLIP" />
-                    <Row label="Wearing Necklace" value={d.wearing_necklace} method="CLIP" />
-                    <Row label="Wearing Necktie" value={d.wearing_necktie} method="CLIP" />
-                    <Row label="Heavy Makeup" value={d.heavy_makeup} method="CLIP" />
-
-                    {/* ============ MISCELLANEOUS (EXPANDABLE) ============ */}
-                    <ExpandableSection title="Miscellaneous Details">
-                      <>
-                        <Row label="Attractive" value={d.attractive} method="CLIP" />
-                        <Row label="Young" value={d.young} method="CLIP" />
-                        <Row label="Has Beard" value={d.has_beard} method="CLIP" />
-                        <Row label="Mustache" value={d.mustache} method="CLIP" />
-                        <Row label="Goatee" value={d.goatee} method="CLIP" />
-                        <Row label="Sideburns" value={d.sideburns} method="CLIP" />
-                        {d.facial_hair && (
-                          <>
-                            <Row label="Facial Hair - Full Beard" value={d.facial_hair.full_beard} method="CLIP" />
-                            <Row label="Facial Hair - Goatee" value={d.facial_hair.goatee} method="CLIP" />
-                            <Row label="Facial Hair - Mustache" value={d.facial_hair.mustache} method="CLIP" />
-                            <Row label="Facial Hair - Sideburns" value={d.facial_hair.sideburns} method="CLIP" />
-                            <Row label="Facial Hair - 5 O'Clock Shadow" value={d.facial_hair['5_o_clock_shadow']} method="CLIP" />
-                          </>
-                        )}
-                        {d._celeba_raw && Object.keys(d._celeba_raw).length > 0 && (
-                          <Row label="CelebA Raw Scores" value={JSON.stringify(d._celeba_raw, null, 2)} method="CLIP" />
-                        )}
-                      </>
-                    </ExpandableSection>
+                    <Row label="Wearing Glasses" value={d.wearing_glasses} method="ObstructionViT" />
+                    <Row label="Wearing Sunglasses" value={d.wearing_sunglasses} method="ObstructionViT" />
+                    <Row label="Wearing Mask" value={d.wearing_mask} method="ObstructionViT" />
+                    <Row label="Wearing Hat" value={d.hat_detected} method="SegFormer" />
 
                     {/* ============ ANALYSIS MODELS LEGEND ============ */}
                     <SectionLabel>Analysis Method Details</SectionLabel>
-                    <Row label="MediaPipe" value="478 3D landmarks + 52 blendshapes (Google)" />
-                    <Row label="CLIP" value="OpenAI zero-shot attribute classification (ViT-B/32)" />
+                    <Row label="MediaPipe" value="478 3D landmarks + 52 ARKit blendshapes (Google)" />
                     <Row label="FairFace" value="Gender & age classification (ViT, 93.4% / 59% accuracy)" />
                     <Row label="Ethnicity_Test_v003" value="5-class ethnicity classification (ViT, 79.6% accuracy)" />
                     <Row label="SegFormer" value="Human parsing segmentation (SegFormer-B5, mIoU 0.626)" />
+                    <Row label="SegFormer+OpenCV" value="OpenCV Laplacian/LAB statistics computed over SegFormer face mask" />
+                    <Row label="ObstructionViT" value="dima806/face_obstruction_image_detection — 6-class ViT-B/16, ~99% precision on glasses/sunglasses/mask" />
+                    <Row label="HairTypeViT" value="dima806/hair_type_image_detection — 5-class ViT-B/16, 93% accuracy (curly/dreadlocks/kinky/straight/wavy)" />
                     <Row label="HSEmotion" value="8-class emotion recognition (EfficientNet-B0)" />
                     <Row label="ColorAnalyzer" value="Pixel-level LAB/HSV analysis (no AI model)" />
                   </>

@@ -1,27 +1,42 @@
 """
-SegFormer-B5 human parsing — replaces the old jonathandinu/face-parsing loader.
+ParsingAnalyzer — SegFormer-B5 human parsing for masks and skin stats.
 
-Model: matei-dorian/segformer-b5-finetuned-human-parsing
-  - Architecture: SegFormer-B5 (nvidia/mit-b5 backbone)
-  - Published metrics on its eval set:
-      • Mean IoU:       0.6258
-      • Mean accuracy:  0.7547
-      • Overall acc.:   0.8256
-      • Face:  acc 0.9094 / IoU 0.8294
-      • Hair:  acc 0.8974 / IoU 0.8171
-  - Outputs 18 classes (background, hat, hair, sunglasses, upper-clothes, skirt,
-    pants, dress, belt, left-shoe, right-shoe, face, left-leg, right-leg,
-    left-arm, right-arm, bag, scarf).
+Model
+-----
+- Architecture : SegFormer-B5 (nvidia/mit-b5 backbone)
+- HF repo      : matei-dorian/segformer-b5-finetuned-human-parsing
+- License      : Apache 2.0
+- Eval metrics : mean IoU 0.626, overall acc 0.826
+                 face acc 0.909 / IoU 0.829
+                 hair acc 0.897 / IoU 0.817
+- Classes (18) : background, hat, hair, sunglasses, upper_clothes, skirt,
+                 pants, dress, belt, left_shoe, right_shoe, face,
+                 left_leg, right_leg, left_arm, right_arm, bag, scarf
 
-We keep the same downstream contract as before: skin/hair/lip masks plus
-hair-length, accessory flags, wrinkle estimation, freckle/mole detection.
-The lip mask is approximated from the face region (no lip-specific class)
-and is mainly used as a fallback — MediaPipe lip landmarks are still the
-primary source for lip geometry/color in color_analyzer.
+Inputs
+------
+img_rgb : np.ndarray (H, W, 3) uint8
+
+Outputs (dict)
+--------------
+Internal masks (stripped from JSON):
+    _skin_mask, _hair_mask
+Public fields:
+    region_coverage  — per-class fraction of pixels
+    hair_length      — bald/very short | short | medium | long
+    hair_present     — bool
+    hat_detected     — bool, true when ≥1% of pixels are class "hat"
+    wrinkle_level    — smooth | slight | moderate | prominent
+    skin_texture_score, skin_uniformity, freckles_or_moles
+
+Notes
+-----
+The wrinkle / texture / freckle fields are OpenCV statistics computed
+over the SegFormer face mask, not direct model outputs. SegFormer
+contributes the mask; OpenCV does the per-pixel math.
 """
 
 from typing import Any
-import warnings
 
 import cv2
 import numpy as np
@@ -34,7 +49,8 @@ from transformers import (
 
 MODEL_ID = "matei-dorian/segformer-b5-finetuned-human-parsing"
 
-# Official label map from the model card.
+# Class id → name as published by the model card. We index masks by
+# these names downstream rather than raw integer ids.
 PARSING_LABELS = {
     0: "background",
     1: "hat",
@@ -59,10 +75,15 @@ PARSING_LABELS = {
 
 class ParsingAnalyzer:
     def __init__(self):
+        # CUDA when available, CPU otherwise. The HF Spaces free tier is
+        # CPU-only, so SegFormer-B5 inference takes ~1-2 s per request.
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.processor = None
         self.model = None
         try:
+            # Both processor and model weights come from the same repo;
+            # processor handles resize/normalize/tensorize.
+            self.processor = SegformerImageProcessor.from_pretrained(MODEL_ID)
             self.model = SegformerForSemanticSegmentation.from_pretrained(MODEL_ID)
             self.model.to(self.device).eval()
         except Exception as exc:
@@ -71,24 +92,36 @@ class ParsingAnalyzer:
     def analyze(self, img_rgb: np.ndarray) -> dict[str, Any]:
         h, w = img_rgb.shape[:2]
 
+        # If the model failed to load we return empty masks so the rest
+        # of the pipeline (especially ColorAnalyzer) sees a consistent
+        # shape and degrades cleanly to "unknown" fields.
         if self.model is None or self.processor is None:
             return self._empty_result(h, w)
 
+        # SegFormer expects PIL; processor will resize internally.
         pil = Image.fromarray(img_rgb)
         inputs = self.processor(images=pil, return_tensors="pt").to(self.device)
 
+        # Forward pass → logits at H/4 × W/4 resolution.
         with torch.no_grad():
             logits = self.model(**inputs).logits  # (1, C, H/4, W/4)
 
+        # Upsample to original resolution, then argmax to get the
+        # class id per pixel.
         upsampled = torch.nn.functional.interpolate(
             logits, size=(h, w), mode="bilinear", align_corners=False
         )
         parsing = upsampled.argmax(dim=1)[0].cpu().numpy().astype(np.uint8)
 
+        # Build a boolean mask per class. Cheap because we already have
+        # the argmax map; each is one numpy equality check.
         masks: dict[str, np.ndarray] = {
             name: (parsing == label_id) for label_id, name in PARSING_LABELS.items()
         }
 
+        # region_coverage = fraction of image occupied by each class.
+        # Useful as a coarse "is this class even present" signal — e.g.
+        # hat detection just checks if hat coverage exceeds a threshold.
         total_pixels = h * w
         region_coverage = {
             name: round(float(mask.sum()) / total_pixels, 4)
@@ -98,16 +131,16 @@ class ParsingAnalyzer:
 
         result: dict[str, Any] = {"region_coverage": region_coverage}
 
+        # Skin & hair masks are passed downstream to ColorAnalyzer.
+        # Leading underscore → stripped from the final JSON payload.
         skin_mask = masks.get("face", np.zeros((h, w), dtype=bool))
         hair_mask = masks.get("hair", np.zeros((h, w), dtype=bool))
-        # No dedicated lip class; color_analyzer falls back to landmarks for lips.
-        lip_mask = np.zeros((h, w), dtype=bool)
-
         result["_skin_mask"] = skin_mask
         result["_hair_mask"] = hair_mask
-        result["_lip_mask"] = lip_mask
 
         # ── Hair length estimation ───────────────────────────────────
+        # Ratio of hair pixels to (face + hair) pixels — bigger ratio
+        # means longer hair extending past the face.
         hair_pixels = int(hair_mask.sum())
         face_pixels = int(skin_mask.sum()) + hair_pixels
         hair_ratio = hair_pixels / face_pixels if face_pixels else 0
@@ -123,18 +156,22 @@ class ParsingAnalyzer:
 
         result["hair_present"] = hair_ratio > 0.03
 
-        # ── Accessories from segmentation ────────────────────────────
-        result["glasses_detected"] = region_coverage.get("sunglasses", 0) > 0.005
+        # ── Hat detection ────────────────────────────────────────────
+        # A real hat consistently covers >1% of pixels; below that we're
+        # in noise / mis-segmentation territory.
         result["hat_detected"] = region_coverage.get("hat", 0) > 0.01
-        result["earring_detected"] = False  # no earring class in this model
-        result["necklace_detected"] = False  # no necklace class in this model
 
-        # ── Skin analysis on face mask ───────────────────────────────
+        # ── Skin texture / wrinkles / freckles ───────────────────────
+        # Only worth computing if the face mask actually has substance.
+        # Under ~100 pixels we don't have enough signal.
         if skin_mask.sum() > 100:
+            # Wrinkles → high-frequency edge energy on the face mask.
+            # Laplacian responds to local intensity curvature; std/mean
+            # over the masked region gives a "how much fine detail" score.
             skin_gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
             laplacian = cv2.Laplacian(skin_gray, cv2.CV_64F)
             skin_edges = np.abs(laplacian)
-            skin_edges[~skin_mask] = 0
+            skin_edges[~skin_mask] = 0  # zero out non-face pixels
             edge_density = skin_edges.sum() / skin_mask.sum() if skin_mask.sum() else 0
 
             if edge_density > 15:
@@ -148,6 +185,10 @@ class ParsingAnalyzer:
 
             result["skin_texture_score"] = round(float(edge_density), 2)
 
+            # Freckles/moles → count pixels well below mean L* lightness.
+            # Working in LAB rather than RGB makes the threshold tone-
+            # independent (a freckle is "darker than surrounding skin"
+            # regardless of base skin tone).
             skin_lab = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2LAB)
             l_channel = skin_lab[:, :, 0].astype(float)
             l_channel[~skin_mask] = np.nan
@@ -161,6 +202,8 @@ class ParsingAnalyzer:
                 else "none"
             )
 
+            # Uniformity = std-dev of L* over the face. Higher = more
+            # variation (uneven skin tone, shadows, scarring).
             skin_l_values = l_channel[skin_mask]
             result["skin_uniformity"] = round(float(np.nanstd(skin_l_values)), 2)
         else:
@@ -173,18 +216,19 @@ class ParsingAnalyzer:
 
     @staticmethod
     def _empty_result(h: int, w: int) -> dict[str, Any]:
+        """Stub returned when the SegFormer model fails to load.
+
+        Shape must match the success path so downstream code can rely
+        on key presence without conditional checks.
+        """
         empty = np.zeros((h, w), dtype=bool)
         return {
             "region_coverage": {},
             "_skin_mask": empty,
             "_hair_mask": empty,
-            "_lip_mask": empty,
             "hair_length": "unknown",
             "hair_present": False,
-            "glasses_detected": False,
             "hat_detected": False,
-            "earring_detected": False,
-            "necklace_detected": False,
             "wrinkle_level": "unknown",
             "skin_texture_score": 0,
             "freckles_or_moles": "unknown",

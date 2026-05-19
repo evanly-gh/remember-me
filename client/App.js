@@ -3,7 +3,12 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { View, ActivityIndicator, DeviceEventEmitter } from 'react-native';
+import { View, ActivityIndicator, DeviceEventEmitter, Text } from 'react-native';
+
+// Make every <Text> on every screen long-press copyable. Applies app-wide so
+// individual screens don't need to remember to pass `selectable`.
+Text.defaultProps = Text.defaultProps || {};
+Text.defaultProps.selectable = true;
 
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
