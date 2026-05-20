@@ -1,0 +1,9 @@
+Beauty dir: /mmfs1/home/evanly/remember-me/training/beauty
+Repo root:  /mmfs1/home/evanly/remember-me
+Data root:  /gscratch/intelligentsystems/evanly/data/SCUT-FBP5500
+=== SLURM job 35381363 on g3025 ===
+Start: Tue May 19 22:37:28 PDT 2026
+Env: /gscratch/intelligentsystems/evanly/conda_envs/beauty-train
+torch 2.12.0+cu130, Quadro RTX 6000
+Device: cuda
+Train samples: 3300  |  Val samples: 2200

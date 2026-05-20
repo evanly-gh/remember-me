@@ -1,0 +1,58 @@
+________________________________________________________________________________
+Miniforge (conda) has been loaded.
+
+- Please create and work in your own conda environments:
+    conda create -n myenv python=3.12
+    conda activate myenv
+
+- To customize environment or package locations, edit your ~/.condarc:
+    envs_dirs:
+      - /path/to/your/envs
+    pkgs_dirs:
+      - /path/to/your/pkgs
+
+  For more information, see:
+    https://docs.conda.io/projects/conda/en/latest/configuration.html
+
+- If your personal Conda stops working after unloading this module, try:
+    source ~/.bashrc
+________________________________________________________________________________
+
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+epoch 1/25:   0%|          | 0/51 [00:00<?, ?it/s]epoch 1/25:   0%|          | 0/51 [00:01<?, ?it/s]
+Traceback (most recent call last):
+  File "/mmfs1/home/evanly/remember-me/training/beauty/train.py", line 189, in <module>
+    main()
+  File "/mmfs1/home/evanly/remember-me/training/beauty/train.py", line 151, in main
+    for imgs, targets in pbar:
+  File "/gscratch/intelligentsystems/evanly/conda_envs/beauty-train/lib/python3.11/site-packages/tqdm/std.py", line 1181, in __iter__
+    for obj in iterable:
+  File "/gscratch/intelligentsystems/evanly/conda_envs/beauty-train/lib/python3.11/site-packages/torch/utils/data/dataloader.py", line 718, in __next__
+    data = self._next_data()
+           ^^^^^^^^^^^^^^^^^
+  File "/gscratch/intelligentsystems/evanly/conda_envs/beauty-train/lib/python3.11/site-packages/torch/utils/data/dataloader.py", line 1525, in _next_data
+    return self._process_data(data, worker_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/gscratch/intelligentsystems/evanly/conda_envs/beauty-train/lib/python3.11/site-packages/torch/utils/data/dataloader.py", line 1563, in _process_data
+    data.reraise()
+  File "/gscratch/intelligentsystems/evanly/conda_envs/beauty-train/lib/python3.11/site-packages/torch/_utils.py", line 774, in reraise
+    raise exception
+FileNotFoundError: Caught FileNotFoundError in DataLoader worker process 0.
+Original Traceback (most recent call last):
+  File "/gscratch/intelligentsystems/evanly/conda_envs/beauty-train/lib/python3.11/site-packages/torch/utils/data/_utils/worker.py", line 374, in _worker_loop
+    data = fetcher.fetch(index)  # type: ignore[possibly-undefined]
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/gscratch/intelligentsystems/evanly/conda_envs/beauty-train/lib/python3.11/site-packages/torch/utils/data/_utils/fetch.py", line 54, in fetch
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/gscratch/intelligentsystems/evanly/conda_envs/beauty-train/lib/python3.11/site-packages/torch/utils/data/_utils/fetch.py", line 54, in <listcomp>
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+            ~~~~~~~~~~~~^^^^^
+  File "/mmfs1/home/evanly/remember-me/training/beauty/dataset.py", line 83, in __getitem__
+    img = np.array(Image.open(img_path).convert("RGB"))
+                   ^^^^^^^^^^^^^^^^^^^^
+  File "/gscratch/intelligentsystems/evanly/conda_envs/beauty-train/lib/python3.11/site-packages/PIL/Image.py", line 3635, in open
+    fp = builtins.open(filename, "rb")
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/gscratch/intelligentsystems/evanly/data/SCUT-FBP5500/CM376.jpg'
+
