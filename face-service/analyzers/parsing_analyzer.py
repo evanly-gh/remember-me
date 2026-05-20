@@ -15,7 +15,12 @@ Model
 
 Inputs
 ------
-img_rgb : np.ndarray (H, W, 3) uint8
+img_rgb : np.ndarray (H, W, 3) uint8.
+          Since `app.py` v3.0, this is typically a face-cropped image
+          (produced by `_crop_to_face` using the InsightFace bbox)
+          rather than the full photo. SegFormer behaves much more
+          consistently when the face fills most of the input — the
+          masks become tighter and skin-stat estimates less noisy.
 
 Outputs (dict)
 --------------

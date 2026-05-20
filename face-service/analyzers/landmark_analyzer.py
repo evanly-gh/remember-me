@@ -11,6 +11,9 @@ Model
 Inputs
 ------
 img_rgb : np.ndarray (H, W, 3) uint8, RGB order.
+          Always receives the full photo (not a face crop) — MediaPipe
+          has its own face detector and works best with the full
+          field of view to maintain z-coordinate consistency.
 
 Outputs (dict)
 --------------

@@ -2,65 +2,82 @@
 
 ## Pipeline
 
-A single photo is fed through seven analyzers. Their outputs are merged
-into one dictionary; later analyzers overwrite any colliding keys from
-earlier ones.
+A single photo runs through ten analyzers. Their outputs are merged
+into one dictionary; later analyzers can overwrite keys from earlier
+ones (only intentional in a couple of places — `_run_pipeline` in
+[app.py](app.py) is the single source of truth).
 
 ```
 Photo (RGB ndarray)
   │
-  ├─► [1] MediaPipe Face Landmarker
-  │       478 landmarks + 52 blendshapes
-  │       → all geometric features (face/eye/nose/eyebrow/lip/jaw shape),
-  │         smiling (mouthSmile blendshapes), eyes_open, possible_dimples,
-  │         possible_unibrow, facial_asymmetry_score, blendshapes dict
+  ├─► [1] InsightFaceAnalyzer  (insightface buffalo_l, ONNX)
+  │       → face_bbox, face_confidence, face_embedding (512-d ArcFace),
+  │         age_estimate, age_range, gender + confidences
   │
-  ├─► [2] FairFace + Ethnicity ViT (DemographicAnalyzer)
-  │       → age_range, age_estimate (softmax-weighted continuous), age_confidence,
-  │         gender + confidence, ethnicity + confidence, full distributions
+  ├─► Build face crop from face_bbox + padding. Downstream analyzers
+  │   that benefit from a tighter input read the crop; MediaPipe gets
+  │   the full image because it has its own detector.
   │
-  ├─► [3] SegFormer-B5 human parsing (ParsingAnalyzer)
-  │       → per-class pixel masks (face, hair, hat, …)
-  │       → hair_length, hair_present, hat_detected,
-  │         wrinkle_level, skin_texture_score, skin_uniformity, freckles_or_moles
-  │       (uses OpenCV stats over the SegFormer face mask for the skin rows)
+  ├─► [2] LandmarkAnalyzer  (MediaPipe Face Landmarker)
+  │       478 landmarks + 52 blendshapes → all geometric features,
+  │       smiling, mouth_open (via blendshapes.jawOpen), eyes_open,
+  │       facial_asymmetry_score, smile_asymmetry, possible_dimples,
+  │       possible_unibrow.
   │
-  ├─► [4] HSEmotion EfficientNet-B0 (EmotionAnalyzer)
-  │       → primary/secondary emotion, emotion_scores (8 classes),
-  │         valence, arousal, mood
+  ├─► [3] EthnicityAnalyzer  (cledoux42/Ethnicity_Test_v003 ViT)
+  │       → ethnicity, ethnicity_confidence, ethnicity_distribution
+  │       (cropped input).
   │
-  ├─► [5] ColorAnalyzer (no ML — OpenCV LAB/HSV)
-  │       inputs: SegFormer skin/hair masks + MediaPipe landmarks
+  ├─► [4] ParsingAnalyzer  (SegFormer-B5 human parsing)
+  │       → _skin_mask, _hair_mask, hat_detected, hair_length,
+  │         hair_present, wrinkle_level, skin_texture_score,
+  │         skin_uniformity, freckles_or_moles
+  │       (cropped input — cleaner masks).
+  │
+  ├─► [5] EmotionAnalyzer  (HSEmotion EfficientNet-B0)
+  │       → primary/secondary emotion, emotion_scores, valence,
+  │         arousal, mood (cropped input).
+  │
+  ├─► [6] ColorAnalyzer  (no ML — OpenCV LAB/HSV)
+  │       Reads SegFormer masks + MediaPipe lip/iris landmarks.
   │       → skin_tone (Fitzpatrick + L*/a*/b* + hex), skin_undertone,
-  │         eye_color, hair_color (name + hex), hair_texture (pixel-Laplacian, coarse),
-  │         lip_color (shade + hex)  ← lip mask built from MediaPipe outer-minus-inner lip
+  │         eye_color, hair_color (name + hex), hair_texture
+  │         (coarse, fallback), lip_color (shade + hex)
   │
-  ├─► [6] ObstructionViT — dima806/face_obstruction_image_detection
+  ├─► [7] ObstructionAnalyzer  (dima806/face_obstruction ViT-B/16)
   │       → wearing_glasses, wearing_sunglasses, wearing_mask,
-  │         obstruction_top, obstruction_scores
+  │         obstruction_scores (cropped input).
   │
-  └─► [7] HairTypeViT — dima806/hair_type_image_detection
-          → hair_type (curly/dreadlocks/kinky/straight/wavy),
-            hair_type_confidence, hair_type_scores
+  ├─► [8] HairTypeAnalyzer  (dima806/hair_type ViT-B/16)
+  │       → hair_type (curly/dreadlocks/kinky/straight/wavy),
+  │         hair_type_confidence (cropped input).
+  │
+  ├─► [9] BeautyAnalyzer  (ResNet-50 trained on SCUT-FBP5500)
+  │       Optional. Loads local weights or HF Hub; if absent, output
+  │       is None and AestheticAnalyzer falls back to rules.
+  │       → beauty_score (1.0–5.0), beauty_score_norm (0–100),
+  │         beauty_model_source.
+  │
+  └─► [10] AestheticAnalyzer  (no model)
+          Reads the merged dict from steps 1–9 and produces the
+          final chopped_score (0–100) plus chopped_breakdown
+          showing each factor's signed contribution.
 ```
 
-All masks and other internal fields use a leading underscore in the key
-(e.g. `_skin_mask`). `app.py` strips those before returning JSON so the
-client never sees them.
+Internal/scratch keys use a leading underscore (`_skin_mask`,
+`_hair_mask`, `_raw_landmarks`, `_insight_landmarks_2d`). `app.py`
+strips them before returning JSON.
 
 ## Attribute → source map
 
-The EditProfileScreen renders only fields backed by one of these
-analyzers. Anything previously fed by the FaRL zero-shot classifier
-has been removed because its outputs were too noisy to trust.
-
 | Section | Field(s) | Source |
 |---|---|---|
-| Demographics | gender, age (continuous), age_range, ethnicity, distributions | FairFace + Ethnicity ViT |
-| Emotion | primary/secondary emotion, scores, valence, arousal, mood | HSEmotion |
-| Face Structure | face_shape (+ 4 ratios), jawline_type/angle, chin_type, cheekbone_prominence, cheek_fullness, forehead_width, facial_asymmetry_score | MediaPipe |
-| Hair | hair_length, hair_present | SegFormer |
-| Hair | hair_type (+ confidence) | HairTypeViT |
+| Demographics | face_bbox, face_confidence, face_embedding (512-d), age_estimate, age_range, age_confidence, gender, gender_confidence | InsightFace buffalo_l |
+| Demographics | ethnicity, ethnicity_confidence, ethnicity_distribution | EthnicityAnalyzer (cledoux42 ViT) |
+| Emotion | primary/secondary emotion, emotion_scores, valence, arousal, mood | HSEmotion EffNet-B0 |
+| Face Structure | face_shape (+ 4 ratios), jawline_type/angle, chin_type, cheekbone_prominence, cheek_fullness, forehead_width, facial_asymmetry_score | MediaPipe Face Landmarker |
+| Hair | hair_length, hair_present | SegFormer-B5 |
+| Hair | hair_type (+ confidence) | HairTypeViT (dima806) |
 | Hair | hair_color, hair hex | ColorAnalyzer |
 | Eyes | eye_shape, eye_depth, eye_spacing, eye_size, eyes_open | MediaPipe |
 | Eyes | eye_color | ColorAnalyzer |
@@ -70,30 +87,58 @@ has been removed because its outputs were too noisy to trust.
 | Lips & Mouth | lip_color (shade + hex) | ColorAnalyzer (mask from MediaPipe) |
 | Skin | skin_tone (Fitzpatrick, L*/a*/b*, hex), skin_undertone | ColorAnalyzer |
 | Skin | wrinkle_level, skin_texture_score, skin_uniformity, freckles_or_moles | SegFormer mask + OpenCV stats |
-| Accessories | wearing_glasses, wearing_sunglasses, wearing_mask | ObstructionViT |
+| Accessories | wearing_glasses, wearing_sunglasses, wearing_mask | ObstructionViT (dima806) |
 | Accessories | wearing_hat | SegFormer (hat class coverage) |
+| Aesthetics | beauty_score (1–5), beauty_score_norm (0–100) | BeautyAnalyzer (SCUT-FBP5500 ResNet-50) |
+| Aesthetics | chopped_score (0–100), chopped_breakdown | AestheticAnalyzer (rule + learned blend) |
+
+## Face matching
+
+InsightFace's ArcFace head emits a 512-d L2-normalised recognition
+embedding. We store it alongside each contact in
+`people.face_embedding` (pgvector). On a new photo save, the client
+queries Supabase for any contact with cosine similarity ≥ 0.55 to the
+new embedding and prompts the user *"this looks like {name}, add to
+that profile?"* before creating a new contact.
+
+LFW accuracy is 99.83%; IJB-B at FAR=1e-4 is 96.21%. For grouping
+photos in a personal collection (similar lighting, same camera) this
+is excellent. Identical twins and close family members can match — the
+0.55 threshold makes the prompt opt-in rather than auto-merge.
+
+## Training the beauty regressor
+
+Live source in [training/beauty/](../training/beauty/). The script
+fine-tunes a timm ResNet-50 on SCUT-FBP5500. After training, drop the
+resulting `beauty_regressor.pt` into `face-service/models/` (or push
+to HF Hub and set `BEAUTY_HF_REPO_ID`). `BeautyAnalyzer` picks it up
+automatically on the next process boot.
+
+Until weights exist, `beauty_score` returns None and the AestheticAnalyzer
+gracefully falls back to a pure rule-based chopped score.
 
 ## Deployment
 
-The service is built as a Docker image targeting Hugging Face Spaces
-free tier (2GB RAM, shared CPU). The MediaPipe `.task` is pulled at
-build time; all Hugging Face models lazy-download on first inference
-and cache under `/root/.cache/huggingface` inside the container.
+The service builds as a Docker image targeting Hugging Face Spaces
+free tier (2 GB RAM, shared CPU). MediaPipe `.task` and the
+InsightFace buffalo_l bundle are pulled at build time; all other
+Hugging Face models lazy-download on first inference and cache under
+`/root/.cache/huggingface`.
 
 The Node/Express server forwards `/analyze-face` requests to
-`FACE_SERVICE_URL/analyze-base64`. The React Native client never talks
-to this service directly.
+`FACE_SERVICE_URL/analyze-base64`. The React Native client never
+talks to this service directly.
 
 ## Adding a new analyzer
 
-1. Drop a new module under `analyzers/` exposing a class with
-   `__init__()` and `analyze(img_rgb) -> dict`.
-2. Import it in `app.py`, add a global slot and a lazy-load block in
-   `get_analyzers()`, and append a `results.update(...)` call to both
-   `/analyze` and `/analyze-base64`.
-3. Surface the new keys in `client/src/screens/EditProfileScreen.js`
-   and add a legend row in the "Analysis Method Details" section.
+1. Drop a new module under `analyzers/` with a class exposing
+   `__init__()` and `analyze(...) -> dict`.
+2. Import + add a lazy-load block in `app.py`'s `get_analyzers()`.
+3. Add a `results.update(...)` call inside `_run_pipeline` at the
+   right pipeline position.
+4. Surface the new keys in
+   [client/src/screens/EditProfileScreen.js](../client/src/screens/EditProfileScreen.js)
+   and add a legend row.
 
 Order matters: later analyzers overwrite earlier keys on collision.
-The specialized ViT classifiers run last so they win over any coarser
-signal.
+The aesthetic aggregator runs last so it can see everything.

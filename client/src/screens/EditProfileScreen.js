@@ -37,6 +37,7 @@ export default function EditProfileScreen({ route, navigation }) {
   const [date, setDate] = useState('');
   const [notes, setNotes] = useState('');
   const [showFacialDetails, setShowFacialDetails] = useState(false);
+  const [showChoppedScore, setShowChoppedScore] = useState(false);
 
   useEffect(() => {
     if (user) loadRecords();
@@ -51,8 +52,12 @@ export default function EditProfileScreen({ route, navigation }) {
 
   const loadSettings = async () => {
     try {
-      const value = await AsyncStorage.getItem('@hcp:settings:showFacialDetails');
-      setShowFacialDetails(value === 'true');
+      const [facial, chopped] = await Promise.all([
+        AsyncStorage.getItem('@hcp:settings:showFacialDetails'),
+        AsyncStorage.getItem('@hcp:settings:showChoppedScore'),
+      ]);
+      setShowFacialDetails(facial === 'true');
+      setShowChoppedScore(chopped === 'true');
     } catch (error) {
       console.error('Error loading settings:', error);
     }
@@ -495,18 +500,22 @@ export default function EditProfileScreen({ route, navigation }) {
                   <>
                     {/* ============ DEMOGRAPHICS ============ */}
                     <SectionLabel>Demographics</SectionLabel>
-                    <Row label="Gender" value={d.gender} method="FairFace" />
-                    <Row label="Gender Confidence" value={d.gender_confidence && `${(d.gender_confidence * 100).toFixed(1)}%`} method="FairFace" />
-                    <Row label="Age Range" value={d.age_range} method="FairFace" />
-                    <Row label="Age Estimate" value={d.age_estimate} method="FairFace" />
-                    <Row label="Age Confidence" value={d.age_confidence && `${(d.age_confidence * 100).toFixed(1)}%`} method="FairFace" />
+                    <Row label="Gender" value={d.gender} method="InsightFace" />
+                    <Row label="Age Estimate" value={d.age_estimate ? `${d.age_estimate} yrs` : null} method="InsightFace" />
+                    <Row label="Age Range" value={d.age_range} method="InsightFace" />
                     {d.age_distribution && Object.keys(d.age_distribution).length > 0 && (
-                      <Row label="Age Distribution" value={Object.entries(d.age_distribution).map(([k, v]) => `${k}: ${(v * 100).toFixed(1)}%`).join(', ')} method="FairFace" />
+                      <Row label="Age Distribution" value={Object.entries(d.age_distribution).map(([k, v]) => `${k}: ${(v * 100).toFixed(1)}%`).join(', ')} method="InsightFace" />
                     )}
                     <Row label="Ethnicity" value={d.ethnicity} method="Ethnicity_Test_v003" />
                     <Row label="Ethnicity Confidence" value={d.ethnicity_confidence && `${(d.ethnicity_confidence * 100).toFixed(1)}%`} method="Ethnicity_Test_v003" />
                     {d.ethnicity_distribution && Object.keys(d.ethnicity_distribution).length > 0 && (
                       <Row label="Ethnicity Distribution" value={Object.entries(d.ethnicity_distribution).filter(([, v]) => v > 0).map(([k, v]) => `${k}: ${(v * 100).toFixed(1)}%`).join(', ')} method="Ethnicity_Test_v003" />
+                    )}
+                    {d.face_confidence !== undefined && d.face_confidence > 0 && (
+                      <Row label="Face Detection Confidence" value={`${(d.face_confidence * 100).toFixed(1)}%`} method="InsightFace" />
+                    )}
+                    {d.face_embedding && Array.isArray(d.face_embedding) && (
+                      <Row label="Face Embedding" value={`${d.face_embedding.length}-d ArcFace vector (stored for matching)`} method="InsightFace" />
                     )}
 
                     {/* ============ EMOTION ============ */}
@@ -621,17 +630,54 @@ export default function EditProfileScreen({ route, navigation }) {
                     <Row label="Wearing Mask" value={d.wearing_mask} method="ObstructionViT" />
                     <Row label="Wearing Hat" value={d.hat_detected} method="SegFormer" />
 
+                    {/* ============ AESTHETICS (gated by Settings) ============ */}
+                    {showChoppedScore && (d.chopped_score !== undefined || d.beauty_score !== undefined) && (
+                      <>
+                        <SectionLabel>Aesthetics</SectionLabel>
+                        <Text style={{ color: colors.textTertiary, fontSize: 12, paddingHorizontal: 20, paddingBottom: 8, fontStyle: 'italic' }}>
+                          Subjective. Weights are guesses, not learned from human preferences. Treat as an in-joke metric.
+                        </Text>
+                        {d.chopped_score !== undefined && (
+                          <Row label="Chopped Score" value={`${d.chopped_score} / 100`} method="AestheticAnalyzer" />
+                        )}
+                        {d.chopped_score !== undefined && (
+                          <Row label="Attractiveness (inverse)" value={`${(100 - d.chopped_score).toFixed(1)} / 100`} method="AestheticAnalyzer" />
+                        )}
+                        {d.beauty_score !== null && d.beauty_score !== undefined && (
+                          <Row label="Learned Beauty Score" value={`${d.beauty_score} / 5.0`} method="BeautyRegressor" />
+                        )}
+                        {d.beauty_score_norm !== null && d.beauty_score_norm !== undefined && (
+                          <Row label="Learned Beauty (0–100)" value={`${d.beauty_score_norm.toFixed(1)}`} method="BeautyRegressor" />
+                        )}
+                        {d.beauty_model_source && (
+                          <Row label="Beauty Model Source" value={d.beauty_model_source} method="BeautyRegressor" />
+                        )}
+                        {d.chopped_breakdown && Object.keys(d.chopped_breakdown).length > 0 && (
+                          <Row
+                            label="Chopped Breakdown"
+                            value={Object.entries(d.chopped_breakdown)
+                              .filter(([k]) => !k.startsWith('_'))
+                              .map(([k, v]) => `${k}: ${v > 0 ? '+' : ''}${v}`)
+                              .join(', ')}
+                            method="AestheticAnalyzer"
+                          />
+                        )}
+                      </>
+                    )}
+
                     {/* ============ ANALYSIS MODELS LEGEND ============ */}
                     <SectionLabel>Analysis Method Details</SectionLabel>
+                    <Row label="InsightFace" value="buffalo_l ONNX bundle: SCRFD detection + ArcFace 512-d recognition + age + gender + 106 landmarks (99.83% LFW)" />
                     <Row label="MediaPipe" value="478 3D landmarks + 52 ARKit blendshapes (Google)" />
-                    <Row label="FairFace" value="Gender & age classification (ViT, 93.4% / 59% accuracy)" />
-                    <Row label="Ethnicity_Test_v003" value="5-class ethnicity classification (ViT, 79.6% accuracy)" />
-                    <Row label="SegFormer" value="Human parsing segmentation (SegFormer-B5, mIoU 0.626)" />
+                    <Row label="Ethnicity_Test_v003" value="cledoux42 5-class ethnicity ViT (79.6% accuracy)" />
+                    <Row label="SegFormer" value="matei-dorian/segformer-b5-finetuned-human-parsing (mIoU 0.626, face IoU 0.829)" />
                     <Row label="SegFormer+OpenCV" value="OpenCV Laplacian/LAB statistics computed over SegFormer face mask" />
                     <Row label="ObstructionViT" value="dima806/face_obstruction_image_detection — 6-class ViT-B/16, ~99% precision on glasses/sunglasses/mask" />
                     <Row label="HairTypeViT" value="dima806/hair_type_image_detection — 5-class ViT-B/16, 93% accuracy (curly/dreadlocks/kinky/straight/wavy)" />
-                    <Row label="HSEmotion" value="8-class emotion recognition (EfficientNet-B0)" />
+                    <Row label="HSEmotion" value="8-class emotion recognition (EfficientNet-B0, ~66% AffectNet-8)" />
                     <Row label="ColorAnalyzer" value="Pixel-level LAB/HSV analysis (no AI model)" />
+                    <Row label="BeautyRegressor" value="ResNet-50 trained on SCUT-FBP5500 (1.0–5.0 beauty score, target Pearson r ≥ 0.85)" />
+                    <Row label="AestheticAnalyzer" value="Weighted blend of learned beauty + heuristic factors → 0–100 chopped score (no AI model)" />
                   </>
                 );
               } catch (error) {

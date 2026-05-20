@@ -21,6 +21,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { generateEmbedding, buildSearchableText } from '../lib/embeddings';
+import { findSimilarFaces } from '../lib/face_matching';
 
 const DETAIL_FIELDS = [
   { key: 'title', label: 'Relation', placeholder: 'e.g., Friend, Colleague', icon: 'person-outline' },
@@ -197,36 +198,70 @@ export default function RecordScreen({ navigation }) {
         })
           .then((res) => res.ok ? res.json() : null)
           .then(async (result) => {
-            if (result) {
-              // Update facial_details
-              await supabase
-                .from('people')
-                .update({ facial_details: result })
-                .eq('id', recordId);
+            if (!result) return;
 
-              // Generate and store embedding for semantic search
+            // 1. Persist the full facial_details JSON plus the ArcFace
+            //    face_embedding column (used for cross-photo identity
+            //    matching). The embedding lives in its own pgvector
+            //    column so we can run nearest-neighbor queries on it.
+            const faceEmbedding = result?.data?.face_embedding || null;
+            const update = { facial_details: result };
+            if (Array.isArray(faceEmbedding) && faceEmbedding.length === 512) {
+              update.face_embedding = faceEmbedding;
+            }
+            await supabase.from('people').update(update).eq('id', recordId);
+
+            // 2. Generate and store the text embedding for semantic search.
+            try {
+              const searchableText = buildSearchableText({
+                ...contactData,
+                facial_details: result
+              });
+              const embedding = await generateEmbedding(searchableText);
+              if (embedding) {
+                await supabase
+                  .from('people')
+                  .update({ embedding, searchable_text: searchableText })
+                  .eq('id', recordId);
+              }
+            } catch (embeddingError) {
+              console.warn('Embedding generation failed:', embeddingError.message);
+            }
+
+            // 3. Face matching: see if any existing contact looks like
+            //    this person. Excludes the row we just created. If we
+            //    find a confident match with a *different* name, prompt
+            //    the user to merge into that profile.
+            if (Array.isArray(faceEmbedding) && faceEmbedding.length === 512) {
               try {
-                const searchableText = buildSearchableText({
-                  ...contactData,
-                  facial_details: result
-                });
-
-                const embedding = await generateEmbedding(searchableText);
-
-                if (embedding) {
-                  await supabase
-                    .from('people')
-                    .update({
-                      embedding,
-                      searchable_text: searchableText
-                    })
-                    .eq('id', recordId);
-
-                  console.log('Embedding generated successfully');
+                const matches = await findSimilarFaces(faceEmbedding, user.id);
+                const candidate = (matches || []).find(
+                  (m) => m.id !== recordId && m.name !== contactData.name
+                );
+                if (candidate) {
+                  Alert.alert(
+                    'Look familiar?',
+                    `This face looks like ${candidate.name} ` +
+                    `(${(candidate.similarity * 100).toFixed(1)}% match). ` +
+                    `Add this photo to that profile?`,
+                    [
+                      { text: 'No, keep separate', style: 'cancel' },
+                      {
+                        text: `Add to ${candidate.name}`,
+                        onPress: async () => {
+                          // Profiles are grouped by name in this app, so
+                          // renaming the new row is the merge operation.
+                          await supabase
+                            .from('people')
+                            .update({ name: candidate.name })
+                            .eq('id', recordId);
+                        },
+                      },
+                    ]
+                  );
                 }
-              } catch (embeddingError) {
-                console.warn('Embedding generation failed:', embeddingError.message);
-                // Don't fail the whole operation if embedding fails
+              } catch (matchError) {
+                console.warn('Face matching failed:', matchError.message || matchError);
               }
             }
           })

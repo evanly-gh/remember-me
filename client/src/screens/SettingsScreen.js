@@ -14,6 +14,7 @@ export default function SettingsScreen() {
   const { user, signOut } = useAuth();
   const { colors, themePreference, setThemePreference } = useTheme();
   const [showFacialDetails, setShowFacialDetails] = useState(false);
+  const [showChoppedScore, setShowChoppedScore] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -21,10 +22,12 @@ export default function SettingsScreen() {
 
   const loadSettings = async () => {
     try {
-      const value = await AsyncStorage.getItem('@hcp:settings:showFacialDetails');
-      if (value !== null) {
-        setShowFacialDetails(value === 'true');
-      }
+      const [facial, chopped] = await Promise.all([
+        AsyncStorage.getItem('@hcp:settings:showFacialDetails'),
+        AsyncStorage.getItem('@hcp:settings:showChoppedScore'),
+      ]);
+      if (facial !== null) setShowFacialDetails(facial === 'true');
+      if (chopped !== null) setShowChoppedScore(chopped === 'true');
     } catch (error) {
       console.error('Error loading settings:', error);
     }
@@ -34,6 +37,16 @@ export default function SettingsScreen() {
     try {
       setShowFacialDetails(value);
       await AsyncStorage.setItem('@hcp:settings:showFacialDetails', value.toString());
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      Alert.alert('Error', 'Failed to save setting');
+    }
+  };
+
+  const toggleChoppedScore = async (value) => {
+    try {
+      setShowChoppedScore(value);
+      await AsyncStorage.setItem('@hcp:settings:showChoppedScore', value.toString());
     } catch (error) {
       console.error('Error saving settings:', error);
       Alert.alert('Error', 'Failed to save setting');
@@ -95,6 +108,23 @@ export default function SettingsScreen() {
             onValueChange={toggleFacialDetails}
             trackColor={{ false: colors.switchTrackOff, true: colors.accentTrack }}
             thumbColor={showFacialDetails ? colors.accent : colors.switchThumbOff}
+          />
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <View style={styles.settingRow}>
+          <View style={styles.settingText}>
+            <Text style={[styles.settingLabel, { color: colors.text }]}>Show Chopped Score</Text>
+            <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
+              Display the aesthetic score (0–100) computed from facial attributes plus a learned beauty regressor. Subjective and culturally biased — treat as an in-joke metric.
+            </Text>
+          </View>
+          <Switch
+            value={showChoppedScore}
+            onValueChange={toggleChoppedScore}
+            trackColor={{ false: colors.switchTrackOff, true: colors.accentTrack }}
+            thumbColor={showChoppedScore ? colors.accent : colors.switchThumbOff}
           />
         </View>
       </View>

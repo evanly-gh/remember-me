@@ -2,38 +2,57 @@
 HCP Face Analysis Microservice
 ==============================
 
-FastAPI service that runs seven specialized analyzers over a single photo
-and merges their outputs into one ~100-field facial-attribute dictionary.
+FastAPI service that runs nine specialized analyzers over a single photo
+and merges their outputs into one facial-attribute dictionary, including
+a face-recognition embedding for cross-photo grouping and a numeric
+"chopped score" aesthetic rating.
 
 Pipeline (in execution order)
 -----------------------------
-1.  MediaPipe Face Landmarker   478 3D landmarks + 52 ARKit blendshapes.
-                                Produces all geometric face/eye/nose/lip/
-                                jaw features plus smiling and mouth-open.
+1.  InsightFaceAnalyzer        InsightFace buffalo_l (ONNX). SCRFD
+                               detection + ArcFace 512-d embedding +
+                               age regression + gender + 106 landmarks.
+                               Replaces the previous three FairFace ViTs
+                               and adds face matching as a new capability.
 
-2.  DemographicAnalyzer         Three ViT classifiers (FairFace age,
-                                FairFace gender, Ethnicity_Test_v003).
-                                Age is reported as a softmax-weighted
-                                continuous estimate, not a bucket midpoint.
+2.  LandmarkAnalyzer           MediaPipe Face Landmarker. 478 3D
+                               landmarks + 52 ARKit blendshapes →
+                               geometric features, smiling, mouth_open.
 
-3.  ParsingAnalyzer             SegFormer-B5 human parsing. Emits face
-                                and hair pixel masks plus hair length,
-                                hat detection, and skin texture/wrinkle/
-                                freckle/uniformity stats computed via
-                                OpenCV over the face mask.
+3.  EthnicityAnalyzer          cledoux42/Ethnicity_Test_v003 ViT.
+                               5-class ethnicity widened to a 7-bucket
+                               schema for legacy compatibility.
 
-4.  EmotionAnalyzer             HSEmotion EfficientNet-B0 8-class output
-                                plus derived valence, arousal, mood.
+4.  ParsingAnalyzer            SegFormer-B5 human parsing. Now receives
+                               a face-cropped image (smaller, cleaner).
+                               Emits face/hair masks + hair length +
+                               hat detection + OpenCV-derived skin stats.
 
-5.  ColorAnalyzer               Pixel-level LAB/HSV statistics. Reads
-                                masks from step 3 and lip/iris landmarks
-                                from step 1. No ML model.
+5.  EmotionAnalyzer            HSEmotion EfficientNet-B0. 8-class
+                               emotion + valence/arousal/mood.
 
-6.  ObstructionAnalyzer         dima806 ViT-B/16. Glasses, sunglasses,
-                                mask flags with ~99% precision/recall.
+6.  ColorAnalyzer              Pure OpenCV LAB/HSV statistics. Uses
+                               SegFormer masks + MediaPipe lip/iris
+                               landmarks. No ML model.
 
-7.  HairTypeAnalyzer            dima806 ViT-B/16. Curly/dreadlocks/kinky/
-                                straight/wavy at ~93% accuracy.
+7.  ObstructionAnalyzer        dima806 ViT-B/16. Glasses, sunglasses,
+                               mask. ~99% precision on each.
+
+8.  HairTypeAnalyzer           dima806 ViT-B/16. Curly/dreadlocks/kinky/
+                               straight/wavy. ~93% accuracy.
+
+9.  BeautyAnalyzer             Optional. ResNet-50 trained on
+                               SCUT-FBP5500 (see training/beauty/).
+                               Outputs a 1.0–5.0 beauty score plus a
+                               0–100 normalised version. Falls back to
+                               None when no weights are loaded — the
+                               AestheticAnalyzer then uses rule-based
+                               scoring only.
+
+10. AestheticAnalyzer          Pure-Python aggregator. Reads the merged
+                               dict from analyzers 1–9 and produces the
+                               final `chopped_score` (0–100, higher =
+                               more chopped) and a per-factor breakdown.
 
 Endpoints
 ---------
@@ -42,15 +61,14 @@ GET  /health            liveness check
 POST /analyze           multipart file upload
 POST /analyze-base64    JSON {"image": "<base64>"}
 
-Both POST endpoints run the same pipeline. All analyzers are lazily
-instantiated on first request to keep cold-start latency manageable
-on the Hugging Face Spaces free tier.
+All analyzers are lazily instantiated on first request to keep
+cold-start latency manageable on the Hugging Face Spaces free tier.
 """
 
 import os
-# hf_transfer gives much faster model downloads from the HF Hub on first
-# inference. HF_HUB_DOWNLOAD_TIMEOUT defaults to 10s which is too short
-# for the larger ViT checkpoints on a cold start.
+# hf_transfer makes initial model downloads from the HF Hub much faster.
+# The default HF_HUB_DOWNLOAD_TIMEOUT (10 s) is too short for the larger
+# ViT checkpoints on a cold start.
 os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
 os.environ["HF_HUB_DOWNLOAD_TIMEOUT"] = "60"
 
@@ -64,34 +82,41 @@ from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 
 from analyzers.landmark_analyzer import LandmarkAnalyzer
-from analyzers.demographic_analyzer import DemographicAnalyzer
+from analyzers.ethnicity_analyzer import EthnicityAnalyzer
 from analyzers.parsing_analyzer import ParsingAnalyzer
 from analyzers.emotion_analyzer import EmotionAnalyzer
 from analyzers.color_analyzer import ColorAnalyzer
 from analyzers.obstruction_analyzer import ObstructionAnalyzer
 from analyzers.hair_type_analyzer import HairTypeAnalyzer
+from analyzers.insightface_analyzer import InsightFaceAnalyzer
+from analyzers.beauty_analyzer import BeautyAnalyzer
+from analyzers.aesthetic_analyzer import AestheticAnalyzer
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="HCP Face Analysis Service", version="2.0.0")
+app = FastAPI(title="HCP Face Analysis Service", version="3.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Restrict to your domain in production
+    allow_origins=["*"],  # Restrict to your domain in production.
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Analyzers are initialized lazily on first request to reduce cold-start time
+# Lazy slots, one per analyzer. The first request pays the full
+# model-load cost; subsequent requests are warm.
+insightface_analyzer: Optional[InsightFaceAnalyzer] = None
 landmark_analyzer: Optional[LandmarkAnalyzer] = None
-demographic_analyzer: Optional[DemographicAnalyzer] = None
+ethnicity_analyzer: Optional[EthnicityAnalyzer] = None
 parsing_analyzer: Optional[ParsingAnalyzer] = None
 emotion_analyzer: Optional[EmotionAnalyzer] = None
 color_analyzer: Optional[ColorAnalyzer] = None
 obstruction_analyzer: Optional[ObstructionAnalyzer] = None
 hair_type_analyzer: Optional[HairTypeAnalyzer] = None
+beauty_analyzer: Optional[BeautyAnalyzer] = None
+aesthetic_analyzer: Optional[AestheticAnalyzer] = None
 
 
 def _to_json_safe(value):
@@ -101,8 +126,6 @@ def _to_json_safe(value):
     or boolean mask logic). FastAPI's default JSON encoder doesn't
     handle those, so we normalise everything here before returning.
     """
-    # Numpy first — these checks would otherwise be caught by isinstance
-    # for dict/list because numpy.generic types are duck-typed.
     if isinstance(value, (np.ndarray,)):
         return value.tolist()
     if isinstance(value, (np.integer, np.floating)):
@@ -111,7 +134,6 @@ def _to_json_safe(value):
         return bool(value)
     if isinstance(value, np.generic):
         return value.item()
-    # Recurse into nested containers.
     if isinstance(value, dict):
         return {str(k): _to_json_safe(v) for k, v in value.items()}
     if isinstance(value, (list, tuple, set)):
@@ -126,17 +148,22 @@ def get_analyzers():
     requests. First request pays the full model-load cost; subsequent
     requests are warm.
     """
-    global landmark_analyzer, demographic_analyzer
+    global insightface_analyzer, landmark_analyzer, ethnicity_analyzer
     global parsing_analyzer, emotion_analyzer, color_analyzer
     global obstruction_analyzer, hair_type_analyzer
+    global beauty_analyzer, aesthetic_analyzer
+
+    if insightface_analyzer is None:
+        logger.info("Loading InsightFace buffalo_l bundle...")
+        insightface_analyzer = InsightFaceAnalyzer()
 
     if landmark_analyzer is None:
         logger.info("Loading MediaPipe Face Landmarker...")
         landmark_analyzer = LandmarkAnalyzer()
 
-    if demographic_analyzer is None:
-        logger.info("Loading FairFace demographics model...")
-        demographic_analyzer = DemographicAnalyzer()
+    if ethnicity_analyzer is None:
+        logger.info("Loading Ethnicity classifier...")
+        ethnicity_analyzer = EthnicityAnalyzer()
 
     if parsing_analyzer is None:
         logger.info("Loading SegFormer face parser...")
@@ -157,15 +184,148 @@ def get_analyzers():
         logger.info("Loading hair type classifier...")
         hair_type_analyzer = HairTypeAnalyzer()
 
+    if beauty_analyzer is None:
+        logger.info("Loading beauty regressor (or no-op if untrained)...")
+        beauty_analyzer = BeautyAnalyzer()
+
+    if aesthetic_analyzer is None:
+        aesthetic_analyzer = AestheticAnalyzer()
+
     return (
+        insightface_analyzer,
         landmark_analyzer,
-        demographic_analyzer,
+        ethnicity_analyzer,
         parsing_analyzer,
         emotion_analyzer,
         color_analyzer,
         obstruction_analyzer,
         hair_type_analyzer,
+        beauty_analyzer,
+        aesthetic_analyzer,
     )
+
+
+def _crop_to_face(img_rgb: np.ndarray, bbox, padding: float = 0.4) -> np.ndarray:
+    """Crop the image to a face-centred rectangle with extra context.
+
+    SegFormer and the ViT classifiers tend to do better with the face
+    occupying a large fraction of the input. We pad the InsightFace
+    bbox by `padding` (fraction of bbox size) so context like ears,
+    hair, and the top of the shoulders is preserved.
+
+    Returns the full image unchanged if bbox is None, malformed, or
+    the resulting crop would be degenerate.
+    """
+    if bbox is None or len(bbox) != 4:
+        return img_rgb
+    h, w = img_rgb.shape[:2]
+    try:
+        x1, y1, x2, y2 = bbox
+        bw = max(1.0, x2 - x1)
+        bh = max(1.0, y2 - y1)
+        pad_x = bw * padding
+        pad_y = bh * padding
+        cx1 = max(0, int(x1 - pad_x))
+        cy1 = max(0, int(y1 - pad_y))
+        cx2 = min(w, int(x2 + pad_x))
+        cy2 = min(h, int(y2 + pad_y))
+        if cx2 - cx1 < 32 or cy2 - cy1 < 32:
+            return img_rgb
+        return img_rgb[cy1:cy2, cx1:cx2]
+    except Exception:
+        return img_rgb
+
+
+def _run_pipeline(img_array: np.ndarray) -> dict:
+    """Run all ten analyzers against `img_array` and return the merged dict.
+
+    Shared by /analyze and /analyze-base64. Kept as a function rather
+    than inlined twice so the per-step ordering is the single source
+    of truth.
+    """
+    (
+        insight,
+        landmarks,
+        ethnicities,
+        parsing,
+        emotions,
+        colors,
+        obstructions,
+        hair_types,
+        beauty,
+        aesthetics,
+    ) = get_analyzers()
+
+    results: dict = {}
+
+    # Step 1: InsightFace detection + age + gender + recognition embedding.
+    logger.info("Running InsightFace analysis...")
+    insight_results = insight.analyze(img_array)
+    results.update(insight_results)
+
+    # Compute a face crop once and pass it to every downstream analyzer
+    # that benefits from it (parsing, ethnicity, obstruction, hair type,
+    # beauty regressor). Falls back to the full image when InsightFace
+    # didn't find a face.
+    face_crop = _crop_to_face(img_array, insight_results.get("face_bbox"))
+
+    # Step 2: MediaPipe landmarks (works on the full image; it has its
+    # own internal detector).
+    logger.info("Running landmark analysis...")
+    landmark_results = landmarks.analyze(img_array)
+    results.update(landmark_results)
+
+    # Step 3: ethnicity classifier — likes a tighter face crop.
+    logger.info("Running ethnicity analysis...")
+    results.update(ethnicities.analyze(face_crop))
+
+    # Step 4: SegFormer parsing on the face crop (cleaner masks).
+    logger.info("Running face parsing...")
+    parse_results = parsing.analyze(face_crop)
+    results.update(parse_results)
+
+    # Step 5: HSEmotion on the face crop.
+    logger.info("Running emotion analysis...")
+    results.update(emotions.analyze(face_crop))
+
+    # Step 6: pixel-level colour analysis. Uses the face/hair masks
+    # from step 4 (already in face-crop coordinate space) and the
+    # MediaPipe lip/iris landmarks from step 2 (still in full-image
+    # space, normalised). We pass `face_crop` so mask coordinates
+    # line up; landmarks are in normalised coordinates so they map
+    # correctly to either image.
+    logger.info("Running color analysis...")
+    color_results = colors.analyze(
+        face_crop,
+        skin_mask=parse_results.get("_skin_mask"),
+        hair_mask=parse_results.get("_hair_mask"),
+        landmarks=landmark_results.get("_raw_landmarks"),
+    )
+    results.update(color_results)
+
+    # Step 7: obstruction classifier — also benefits from a face crop.
+    logger.info("Running obstruction analysis...")
+    results.update(obstructions.analyze(face_crop))
+
+    # Step 8: hair-type classifier.
+    logger.info("Running hair-type analysis...")
+    results.update(hair_types.analyze(face_crop))
+
+    # Step 9: learned beauty regressor (no-op if no weights present).
+    logger.info("Running beauty regressor...")
+    results.update(beauty.analyze(face_crop))
+
+    # Step 10: aesthetic aggregator. Reads the merged dict; no image
+    # input. Always runs last so it can see every other analyzer's
+    # outputs.
+    logger.info("Running aesthetic aggregator...")
+    results.update(aesthetics.analyze(results))
+
+    # Drop internal/scratch fields (leading underscore) before
+    # returning. Keeps masks and raw landmark lists out of the JSON.
+    results = {k: v for k, v in results.items() if not k.startswith("_")}
+
+    return results
 
 
 @app.get("/")
@@ -173,7 +333,7 @@ async def root():
     """Service banner — confirms the server is reachable and which version."""
     return {
         "name": "HCP Face Analysis Service",
-        "version": "2.0.0",
+        "version": "3.0.0",
         "status": "running",
         "endpoints": {
             "health": "/health",
@@ -193,72 +353,15 @@ async def health():
 async def analyze_face(file: UploadFile = File(...)):
     """Multipart endpoint for direct uploads.
 
-    Runs all seven analyzers and returns the merged attribute dict.
-    See `analyze_face_base64` for the JSON-body variant the Express
-    server calls.
+    Runs the full ten-step pipeline and returns the merged attribute
+    dict. See `analyze_face_base64` for the JSON-body variant the
+    Express server calls.
     """
     try:
-        # Decode the upload into an RGB numpy array. All analyzers
-        # work in RGB; we don't actually need BGR but keeping it as a
-        # local in case a future analyzer wants the OpenCV-native order.
         contents = await file.read()
         image = Image.open(io.BytesIO(contents)).convert("RGB")
         img_array = np.array(image)
-
-        (
-            landmarks,
-            demographics,
-            parsing,
-            emotions,
-            colors,
-            obstructions,
-            hair_types,
-        ) = get_analyzers()
-
-        results = {}
-
-        # Step 1: MediaPipe Landmarks → all geometric features + blendshapes.
-        logger.info("Running landmark analysis...")
-        landmark_results = landmarks.analyze(img_array)
-        results.update(landmark_results)
-
-        # Step 2: FairFace + Ethnicity ViT → demographics.
-        logger.info("Running demographic analysis...")
-        demo_results = demographics.analyze(img_array)
-        results.update(demo_results)
-
-        # Step 3: SegFormer-B5 human parsing → masks + hair length + skin stats.
-        logger.info("Running face parsing...")
-        parse_results = parsing.analyze(img_array)
-        results.update(parse_results)
-
-        # Step 4: HSEmotion → 8-class emotion + valence/arousal/mood.
-        logger.info("Running emotion analysis...")
-        emo_results = emotions.analyze(img_array)
-        results.update(emo_results)
-
-        # Step 5: Pixel color analysis. Uses the face/hair masks from step 3
-        # and MediaPipe lip/iris landmarks from step 1.
-        logger.info("Running color analysis...")
-        color_results = colors.analyze(
-            img_array,
-            skin_mask=parse_results.get("_skin_mask"),
-            hair_mask=parse_results.get("_hair_mask"),
-            landmarks=landmark_results.get("_raw_landmarks"),
-        )
-        results.update(color_results)
-
-        # Step 6: ObstructionViT → glasses / sunglasses / mask flags.
-        logger.info("Running obstruction analysis...")
-        results.update(obstructions.analyze(img_array))
-
-        # Step 7: HairTypeViT → curly/dreadlocks/kinky/straight/wavy.
-        logger.info("Running hair-type analysis...")
-        results.update(hair_types.analyze(img_array))
-
-        # Remove internal fields (prefixed with underscore)
-        results = {k: v for k, v in results.items() if not k.startswith("_")}
-
+        results = _run_pipeline(img_array)
         return {"success": True, "data": _to_json_safe(results)}
 
     except Exception as e:
@@ -281,56 +384,14 @@ async def analyze_face_base64(body: dict):
         if not image_b64:
             raise HTTPException(status_code=400, detail="No image data provided")
 
-        # Strip data URI prefix if present
+        # Strip a possible "data:image/...;base64," prefix.
         if "," in image_b64:
             image_b64 = image_b64.split(",", 1)[1]
 
         image_bytes = base64.b64decode(image_b64)
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         img_array = np.array(image)
-
-        (
-            landmarks,
-            demographics,
-            parsing,
-            emotions,
-            colors,
-            obstructions,
-            hair_types,
-        ) = get_analyzers()
-
-        results = {}
-
-        # Same seven-step pipeline as /analyze. Kept inline (rather
-        # than factored out) so the per-step `logger.info` cadence and
-        # ordering stay obvious when reading either endpoint top-down.
-        landmark_results = landmarks.analyze(img_array)
-        results.update(landmark_results)
-
-        demo_results = demographics.analyze(img_array)
-        results.update(demo_results)
-
-        parse_results = parsing.analyze(img_array)
-        results.update(parse_results)
-
-        emo_results = emotions.analyze(img_array)
-        results.update(emo_results)
-
-        color_results = colors.analyze(
-            img_array,
-            skin_mask=parse_results.get("_skin_mask"),
-            hair_mask=parse_results.get("_hair_mask"),
-            landmarks=landmark_results.get("_raw_landmarks"),
-        )
-        results.update(color_results)
-
-        results.update(obstructions.analyze(img_array))
-        results.update(hair_types.analyze(img_array))
-
-        # Drop internal/scratch fields (leading underscore) before
-        # returning. Keeps masks and raw landmark lists out of the JSON.
-        results = {k: v for k, v in results.items() if not k.startswith("_")}
-
+        results = _run_pipeline(img_array)
         return {"success": True, "data": _to_json_safe(results)}
 
     except HTTPException:
