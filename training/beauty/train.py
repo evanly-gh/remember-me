@@ -105,7 +105,11 @@ def main():
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
-    parser.add_argument("--num-workers", type=int, default=4)
+    default_workers = int(os.environ.get("SLURM_CPUS_PER_TASK", "4"))
+    parser.add_argument(
+        "--num-workers", type=int, default=default_workers,
+        help="DataLoader workers (defaults to SLURM_CPUS_PER_TASK on Hyak)",
+    )
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 

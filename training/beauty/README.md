@@ -51,6 +51,8 @@ Includes torch, torchvision, timm, albumentations, scikit-learn, tqdm.
 
 ## Step 3: Train
 
+### Local / interactive
+
 ```bash
 python train.py \
   --data-root data/SCUT-FBP5500 \
@@ -62,6 +64,57 @@ python train.py \
 ```
 
 On an A40 / L40 expect ~90 s/epoch → ~40 minutes total.
+
+### Hyak (SLURM on klone)
+
+From a login node (`klone-login03`), after cloning the repo and dataset.
+
+**`conda: command not found` on login nodes is normal.** Hyak's conda
+module only loads on compute nodes. Use `setup_hyak.sh`:
+
+```bash
+cd ~/HCP/training/beauty
+
+# 1) Get a short interactive shell on a GPU node
+srun --account=intelligentsystems -p gpu-rtx6k --gres=gpu:rtx6k \
+  --cpus-per-task=4 --mem=16G --time=01:00:00 --pty bash
+
+# 2) On the compute node (prompt will NOT be klone-login03):
+module load conda
+bash setup_hyak.sh --run
+exit
+
+# 3) Back on the login node — clone data if needed, then submit
+git clone https://github.com/HCIILAB/SCUT-FBP5500-Database-Release.git ~/HCP/data/SCUT-FBP5500
+mkdir -p logs checkpoints
+sbatch train.slurm
+```
+
+Env is stored under `/gscratch/intelligentsystems/$USER/conda_envs/beauty-train`
+(not home — home is only 10 GB).
+
+Check queue / logs:
+
+```bash
+squeue -u $USER
+tail -f logs/beauty-train-<JOBID>.out
+```
+
+**Which partition?** Run `hyakalloc`. As of a recent snapshot, the fastest start was
+`intelligentsystems` + `gpu-rtx6k` (8 GPUs free). If that queue is busy, try
+`cse` + `gpu-a100` (1 GPU free):
+
+```bash
+sbatch --account=cse --partition=gpu-a100 --gres=gpu:a100 train.slurm
+```
+
+Avoid `gpu-l40s` on those accounts when hyakalloc shows **0 FREE GPUs** — the
+job will sit in `PD` until someone finishes.
+
+**How long?** ~45–60 minutes wall time on a single RTX 6000 Ada / A40 / L40
+(~90 s/epoch × 25 epochs). The SLURM script requests **1:30:00** for headroom.
+Queue wait is usually minutes on rtx6k when GPUs are free; can be hours on
+saturated partitions.
 
 What it does:
 - Loads pre-trained ResNet-50 (ImageNet) via `timm.create_model`.
