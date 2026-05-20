@@ -28,6 +28,26 @@ from torch.utils.data import Dataset
 SPLIT_DIR_RELATIVE = "train_test_files/split_of_60%training and 40%testing"
 
 
+def resolve_image_path(root: Path, rel_path: str) -> Path:
+    """Map a split-file path to an on-disk image.
+
+    Official releases differ: some list ``Images/AF1.jpg``, v2.1 lists
+  ``AF1.jpg`` with files under ``Images/``.
+    """
+    rel = Path(rel_path)
+    for candidate in (
+        root / rel,
+        root / "Images" / rel,
+        root / "Images" / rel.name,
+    ):
+        if candidate.is_file():
+            return candidate
+    raise FileNotFoundError(
+        f"Image not found for '{rel_path}' under {root} "
+        f"(tried {root / rel}, {root / 'Images' / rel}, {root / 'Images' / rel.name})"
+    )
+
+
 class SCUTFBP5500(Dataset):
     """Image + beauty-score dataset for SCUT-FBP5500.
 
@@ -69,7 +89,8 @@ class SCUTFBP5500(Dataset):
                 # Path can contain spaces in theory; score is always last.
                 rel_path = " ".join(parts[:-1])
                 score = float(parts[-1])
-                self.samples.append((rel_path, score))
+                img_path = resolve_image_path(self.root, rel_path)
+                self.samples.append((img_path, score))
 
         if not self.samples:
             raise RuntimeError(f"No samples loaded from {split_file}")
@@ -78,8 +99,7 @@ class SCUTFBP5500(Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx: int):
-        rel_path, score = self.samples[idx]
-        img_path = self.root / rel_path
+        img_path, score = self.samples[idx]
         img = np.array(Image.open(img_path).convert("RGB"))
 
         if self.transform is not None:
