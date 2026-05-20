@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
@@ -116,6 +117,23 @@ export default function RecordScreen({ navigation }) {
       const photo = await cameraRef.current.takePictureAsync({ base64: true });
       setCapturedPhoto(photo.uri);
       setPhotoBase64(photo.base64);
+      setShowCamera(false);
+    }
+  };
+
+  const pickImageFromGallery = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+      base64: true,
+    });
+
+    if (!result.canceled && result.assets && result.assets[0]) {
+      const asset = result.assets[0];
+      setCapturedPhoto(asset.uri);
+      setPhotoBase64(asset.base64);
       setShowCamera(false);
     }
   };
@@ -284,9 +302,16 @@ export default function RecordScreen({ navigation }) {
             </TouchableOpacity>
           </View>
           <View style={styles.cameraBottom}>
+            <TouchableOpacity
+              style={styles.galleryButton}
+              onPress={pickImageFromGallery}
+            >
+              <Ionicons name="images-outline" size={28} color="#fff" />
+            </TouchableOpacity>
             <TouchableOpacity style={styles.shutterButton} onPress={takePicture}>
               <View style={styles.shutterButtonInner} />
             </TouchableOpacity>
+            <View style={styles.galleryButtonSpacer} />
           </View>
         </SafeAreaView>
       </View>
@@ -618,8 +643,22 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   cameraBottom: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 40,
     paddingBottom: 40,
+  },
+  galleryButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  galleryButtonSpacer: {
+    width: 50,
   },
   shutterButton: {
     width: 70,

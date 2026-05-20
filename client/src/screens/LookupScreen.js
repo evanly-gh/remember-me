@@ -108,12 +108,12 @@ export default function LookupScreen({ navigation }) {
       const queryLower = query.trim();
 
       // STEP 1: Exact text matching (highest priority)
-      // Search across name, phone, title, location, event, and notes
+      // Search across name, phone, title, location, event, notes, and searchable_text (facial features)
       const { data: exactMatches, error: exactError } = await supabase
         .from('people')
         .select('*')
         .eq('user_id', user.id)
-        .or(`name.ilike.%${queryLower}%,phone.ilike.%${queryLower}%,title.ilike.%${queryLower}%,location.ilike.%${queryLower}%,event.ilike.%${queryLower}%,notes.ilike.%${queryLower}%`);
+        .or(`name.ilike.%${queryLower}%,phone.ilike.%${queryLower}%,title.ilike.%${queryLower}%,location.ilike.%${queryLower}%,event.ilike.%${queryLower}%,notes.ilike.%${queryLower}%,searchable_text.ilike.%${queryLower}%`);
 
       // Check if this search was superseded by a newer one
       if (currentSearchId !== searchIdRef.current) {
@@ -142,7 +142,7 @@ export default function LookupScreen({ navigation }) {
 
           const { data: semanticMatches, error: semanticError } = await supabase.rpc('search_contacts', {
             query_embedding: vectorString,
-            match_threshold: 0.2,  // Lower threshold = more results (range: 0-1)
+            match_threshold: 0.3,
             match_count: 100,
             user_id_filter: user.id
           });
@@ -162,8 +162,6 @@ export default function LookupScreen({ navigation }) {
               }
             });
           }
-        } else {
-          console.warn('Embedding generation failed, using exact matches only');
         }
       } catch (embeddingError) {
         console.warn('Semantic search failed, using exact matches only:', embeddingError.message);
@@ -190,9 +188,6 @@ export default function LookupScreen({ navigation }) {
       // Only update results if this is still the latest search
       if (currentSearchId === searchIdRef.current) {
         setProfiles(Object.values(uniqueProfiles));
-
-        // Debug logging
-        console.log(`Search: "${query}" → ${exactMatches?.length || 0} exact, ${resultsMap.size - (exactMatches?.length || 0)} semantic, ${Object.keys(uniqueProfiles).length} unique`);
       }
 
     } catch (error) {
