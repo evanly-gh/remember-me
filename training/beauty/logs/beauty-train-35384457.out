@@ -1,0 +1,85 @@
+Beauty dir: /mmfs1/home/evanly/remember-me/training/beauty
+Repo root:  /mmfs1/home/evanly/remember-me
+Data root:  /gscratch/intelligentsystems/evanly/data/SCUT-FBP5500
+=== SLURM job 35384457 on g3035 ===
+Start: Tue May 19 23:52:12 PDT 2026
+Env: /gscratch/intelligentsystems/evanly/conda_envs/beauty-train
+torch 2.12.0+cu130, 4 CUDA device(s)
+Device: cuda:0  |  distributed=True  |  world_size=4
+Train samples: 3300  |  Val samples: 2200
+  epoch 01  train_mse=9.3857  val_mse=9.6514  val_mae=3.0332  pearson=0.2570
+    ↑ new best pearson=0.2570 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 02  train_mse=7.8864  val_mse=9.6492  val_mae=3.0329  pearson=0.2573
+    ↑ new best pearson=0.2573 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 03  train_mse=4.8588  val_mse=9.6449  val_mae=3.0322  pearson=0.2575
+    ↑ new best pearson=0.2575 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 04  train_mse=1.2232  val_mse=9.6385  val_mae=3.0311  pearson=0.2577
+    ↑ new best pearson=0.2577 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 05  train_mse=0.2525  val_mse=9.6318  val_mae=3.0300  pearson=0.2578
+    ↑ new best pearson=0.2578 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 06  train_mse=0.1910  val_mse=9.6252  val_mae=3.0289  pearson=0.2579
+    ↑ new best pearson=0.2579 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 07  train_mse=0.1467  val_mse=9.6187  val_mae=3.0278  pearson=0.2579
+    ↑ new best pearson=0.2579 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 08  train_mse=0.1436  val_mse=9.6121  val_mae=3.0268  pearson=0.2580
+    ↑ new best pearson=0.2580 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 09  train_mse=0.1294  val_mse=9.6056  val_mae=3.0257  pearson=0.2582
+    ↑ new best pearson=0.2582 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 10  train_mse=0.1130  val_mse=9.5990  val_mae=3.0246  pearson=0.2584
+    ↑ new best pearson=0.2584 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 11  train_mse=0.1046  val_mse=9.5922  val_mae=3.0235  pearson=0.2586
+    ↑ new best pearson=0.2586 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 12  train_mse=0.0948  val_mse=9.5857  val_mae=3.0224  pearson=0.2588
+    ↑ new best pearson=0.2588 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 13  train_mse=0.0945  val_mse=9.5792  val_mae=3.0213  pearson=0.2590
+    ↑ new best pearson=0.2590 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 14  train_mse=0.0862  val_mse=9.5727  val_mae=3.0202  pearson=0.2592
+    ↑ new best pearson=0.2592 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 15  train_mse=0.0796  val_mse=9.5664  val_mae=3.0192  pearson=0.2595
+    ↑ new best pearson=0.2595 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 16  train_mse=0.0706  val_mse=9.5599  val_mae=3.0181  pearson=0.2598
+    ↑ new best pearson=0.2598 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 17  train_mse=0.0816  val_mse=9.5534  val_mae=3.0170  pearson=0.2601
+    ↑ new best pearson=0.2601 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 18  train_mse=0.0784  val_mse=9.5469  val_mae=3.0160  pearson=0.2604
+    ↑ new best pearson=0.2604 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 19  train_mse=0.0740  val_mse=9.5405  val_mae=3.0149  pearson=0.2608
+    ↑ new best pearson=0.2608 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 20  train_mse=0.0771  val_mse=9.5340  val_mae=3.0138  pearson=0.2612
+    ↑ new best pearson=0.2612 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 21  train_mse=0.0656  val_mse=9.5274  val_mae=3.0127  pearson=0.2615
+    ↑ new best pearson=0.2615 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 22  train_mse=0.0660  val_mse=9.5208  val_mae=3.0116  pearson=0.2617
+    ↑ new best pearson=0.2617 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 23  train_mse=0.0628  val_mse=9.5141  val_mae=3.0105  pearson=0.2619
+    ↑ new best pearson=0.2619 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 24  train_mse=0.0676  val_mse=9.5075  val_mae=3.0094  pearson=0.2620
+    ↑ new best pearson=0.2620 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 25  train_mse=0.0611  val_mse=9.5008  val_mae=3.0083  pearson=0.2622
+    ↑ new best pearson=0.2622 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 26  train_mse=0.0528  val_mse=9.4940  val_mae=3.0072  pearson=0.2623
+    ↑ new best pearson=0.2623 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 27  train_mse=0.0526  val_mse=9.4871  val_mae=3.0060  pearson=0.2624
+    ↑ new best pearson=0.2624 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 28  train_mse=0.0547  val_mse=9.4804  val_mae=3.0049  pearson=0.2626
+    ↑ new best pearson=0.2626 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 29  train_mse=0.0582  val_mse=9.4736  val_mae=3.0038  pearson=0.2627
+    ↑ new best pearson=0.2627 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 30  train_mse=0.0637  val_mse=9.4668  val_mae=3.0027  pearson=0.2628
+    ↑ new best pearson=0.2628 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 31  train_mse=0.0443  val_mse=9.4600  val_mae=3.0015  pearson=0.2629
+    ↑ new best pearson=0.2629 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 32  train_mse=0.0478  val_mse=9.4533  val_mae=3.0004  pearson=0.2629
+    ↑ new best pearson=0.2629 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 33  train_mse=0.0533  val_mse=9.4465  val_mae=2.9993  pearson=0.2629
+    ↑ new best pearson=0.2629 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 34  train_mse=0.0472  val_mse=9.4396  val_mae=2.9981  pearson=0.2629
+    ↑ new best pearson=0.2629 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 35  train_mse=0.0481  val_mse=9.4329  val_mae=2.9970  pearson=0.2630
+    ↑ new best pearson=0.2630 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 36  train_mse=0.0470  val_mse=9.4261  val_mae=2.9959  pearson=0.2631
+    ↑ new best pearson=0.2631 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 37  train_mse=0.0510  val_mse=9.4193  val_mae=2.9947  pearson=0.2631
+    ↑ new best pearson=0.2631 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt
+  epoch 38  train_mse=0.0468  val_mse=9.4126  val_mae=2.9936  pearson=0.2632
+    ↑ new best pearson=0.2632 (ema) → saved to /mmfs1/home/evanly/remember-me/training/beauty/checkpoints/beauty_regressor.pt

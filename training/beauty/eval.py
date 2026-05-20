@@ -30,6 +30,11 @@ def main():
     parser.add_argument("--img-size", type=int, default=224)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--num-workers", type=int, default=4)
+    parser.add_argument(
+        "--tta",
+        action="store_true",
+        help="average predictions with horizontal flip (match train.py val TTA)",
+    )
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -57,8 +62,10 @@ def main():
     with torch.no_grad():
         for imgs, targets in val_loader:
             imgs = imgs.to(device)
-            preds = model(imgs).squeeze(-1).cpu().numpy()
-            all_preds.append(preds)
+            preds = model(imgs).squeeze(-1)
+            if args.tta:
+                preds = (preds + model(torch.flip(imgs, dims=[3])).squeeze(-1)) * 0.5
+            all_preds.append(preds.cpu().numpy())
             all_targets.append(targets.numpy())
     preds = np.concatenate(all_preds)
     targets = np.concatenate(all_targets)

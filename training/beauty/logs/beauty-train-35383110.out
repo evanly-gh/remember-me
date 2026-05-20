@@ -1,0 +1,6 @@
+Beauty dir: /mmfs1/home/evanly/remember-me/training/beauty
+Repo root:  /mmfs1/home/evanly/remember-me
+Data root:  /gscratch/intelligentsystems/evanly/data/SCUT-FBP5500
+=== SLURM job 35383110 on g3025 ===
+Start: Tue May 19 23:08:59 PDT 2026
+Env: /gscratch/intelligentsystems/evanly/conda_envs/beauty-train

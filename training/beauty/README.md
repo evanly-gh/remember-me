@@ -8,7 +8,8 @@ an hour. Cost on most clouds is < $2.
 
 ## What the model does
 
-Takes a 224×224 face crop and outputs a single floating-point number
+Takes a square face crop (typically 224×224 or 256×256, matching training)
+and outputs a single floating-point number
 in the SCUT-FBP5500 native range of 1.0 (least attractive) to 5.0
 (most attractive). The dataset averages each image's score across 60
 human raters, so the regression target is already smoothed.
@@ -56,14 +57,21 @@ Includes torch, torchvision, timm, albumentations, scikit-learn, tqdm.
 ```bash
 python train.py \
   --data-root data/SCUT-FBP5500 \
-  --epochs 25 \
+  --epochs 50 \
+  --warmup-epochs 5 \
   --batch-size 64 \
   --lr 1e-4 \
   --backbone resnet50 \
   --out checkpoints/beauty_regressor.pt
 ```
 
-On an A40 / L40 expect ~90 s/epoch → ~40 minutes total.
+Defaults include **EMA** (moving-average weights for val + checkpoint),
+**linear LR warmup → cosine decay**, and **horizontal-flip TTA on val**
+for model selection. Disable TTA with `--no-val-tta`; disable EMA with
+`--ema-decay 0`.
+
+On an A40 / L40 expect on the order of 1–2 minutes per epoch at batch 64
+(depending on `--img-size`).
 
 ### Hyak (SLURM on klone)
 
@@ -111,19 +119,29 @@ sbatch --account=cse --partition=gpu-a100 --gres=gpu:a100 train.slurm
 Avoid `gpu-l40s` on those accounts when hyakalloc shows **0 FREE GPUs** — the
 job will sit in `PD` until someone finishes.
 
-**How long?** ~45–60 minutes wall time on a single RTX 6000 Ada / A40 / L40
-(~90 s/epoch × 25 epochs). The SLURM script requests **1:30:00** for headroom.
-Queue wait is usually minutes on rtx6k when GPUs are free; can be hours on
-saturated partitions.
+**How long?** `train.slurm` uses **4× RTX 6000** via `torchrun` (DDP),
+**50 epochs**, **256×256** crops, per-GPU batch **32** (global 128), LR
+**2e-4** (linear-scaled vs the old 1×GPU batch-64 @ 1e-4 recipe), and
+requests **2:00:00** wall time. Interactive single-GPU runs are faster
+per step but fewer GPUs.
 
 What it does:
 - Loads pre-trained ResNet-50 (ImageNet) via `timm.create_model`.
 - Replaces the classification head with a single linear output.
 - Standard data augmentation: random horizontal flip, color jitter,
-  random resized crop at 224.
-- Adam + cosine LR schedule.
-- Logs train/val MSE + Pearson r to stdout each epoch.
-- Saves the best-val-Pearson checkpoint.
+  random resized crop at `--img-size` (256 in `train.slurm`).
+- AdamW, linear LR warmup, cosine decay, EMA weights, val TTA (flip).
+- Logs train/val MSE + Pearson r to stdout each epoch (rank 0).
+- Saves the best-val-Pearson checkpoint (EMA `state_dict` when EMA is on).
+
+**Single-GPU SLURM** (e.g. only one GPU on the partition): set
+`#SBATCH --gres=gpu:rtx6k:1` and run `NPROC=1 sbatch train.slurm` (or edit
+the script). Override training hyperparameters with env vars, for example
+`IMG_SIZE=224 EPOCHS=40 sbatch train.slurm`.
+
+**Deploying checkpoints trained at 256×256:** set `BEAUTY_IMG_SIZE=256` in
+face-service (see `BeautyAnalyzer`). Older 224-trained weights keep the
+default `BEAUTY_IMG_SIZE=224`.
 
 Expected metrics on the standard test split:
 - **MAE ≤ 0.27** (in the 1.0–5.0 score range)
@@ -137,8 +155,13 @@ lands a couple of points below that.
 ```bash
 python eval.py \
   --data-root data/SCUT-FBP5500 \
-  --checkpoint checkpoints/beauty_regressor.pt
+  --checkpoint checkpoints/beauty_regressor.pt \
+  --img-size 256 \
+  --tta
 ```
+
+Use `--img-size` / `--tta` to match how you trained and selected the
+checkpoint (Slurm defaults: 256 + TTA on val).
 
 Prints test-set MAE, MSE, Pearson r, Spearman ρ. Use this to sanity
 check before deploying.

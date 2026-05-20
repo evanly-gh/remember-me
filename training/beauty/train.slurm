@@ -13,10 +13,10 @@
 #SBATCH --partition=gpu-rtx6k
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
-#SBATCH --gres=gpu:rtx6k
-#SBATCH --time=01:30:00
+#SBATCH --cpus-per-task=32
+#SBATCH --mem=64G
+#SBATCH --gres=gpu:rtx6k:4
+#SBATCH --time=02:00:00
 #SBATCH --output=logs/beauty-train-%j.out
 #SBATCH --error=logs/beauty-train-%j.err
 
@@ -79,20 +79,34 @@ if ! python -c "import torch; assert torch.cuda.is_available()" 2>/dev/null; the
   exit 1
 fi
 
-python -c "import torch; print(f'torch {torch.__version__}, {torch.cuda.get_device_name(0)}')"
+python -c "import torch; print(f'torch {torch.__version__}, {torch.cuda.device_count()} CUDA device(s)')"
 
 if [[ ! -d "$DATA_ROOT/Images" ]]; then
   echo "ERROR: dataset not found at $DATA_ROOT"
   exit 1
 fi
 
-python train.py \
+# 4× GPU DDP: per-GPU batch 32 → global 128. Linear LR scale vs prior 1×GPU batch-64 @ 1e-4.
+NPROC="${NPROC:-4}"
+IMG_SIZE="${IMG_SIZE:-256}"
+EPOCHS="${EPOCHS:-50}"
+WARMUP="${WARMUP:-5}"
+PER_GPU_BS="${PER_GPU_BS:-32}"
+LR="${LR:-2e-4}"
+NUM_WORKERS=$(( ( ${SLURM_CPUS_PER_TASK:-32} + NPROC - 1) / NPROC ))
+
+torchrun --standalone --nproc_per_node="$NPROC" train.py \
   --data-root "$DATA_ROOT" \
-  --epochs 25 \
-  --batch-size 64 \
-  --lr 1e-4 \
+  --epochs "$EPOCHS" \
+  --warmup-epochs "$WARMUP" \
+  --batch-size "$PER_GPU_BS" \
+  --lr "$LR" \
+  --img-size "$IMG_SIZE" \
+  --num-workers "$NUM_WORKERS" \
+  --ema-decay 0.99 \
   --backbone resnet50 \
   --out "$OUT_CKPT"
 
 echo "Done: $(date)"
 echo "Checkpoint: $OUT_CKPT"
+echo "Deploy: set BEAUTY_IMG_SIZE=$IMG_SIZE in face-service if not using the default 224."

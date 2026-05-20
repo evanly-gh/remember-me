@@ -29,6 +29,11 @@ Inputs
 ------
 img_rgb : np.ndarray (H, W, 3) uint8
 
+Inference resolution is ``BEAUTY_IMG_SIZE`` (default 224). If you trained
+with ``--img-size 256`` (the Hyak ``train.slurm`` default), set
+``BEAUTY_IMG_SIZE=256`` in the face-service environment so preprocessing
+matches the checkpoint.
+
 Outputs (dict)
 --------------
 beauty_score          : float in [1.0, 5.0] (SCUT-FBP5500 native range)
@@ -58,6 +63,8 @@ LOCAL_WEIGHTS_PATH = os.environ.get(
 HF_REPO_ID = os.environ.get("BEAUTY_HF_REPO_ID")  # e.g. "user/scut-fbp5500-resnet50"
 HF_FILENAME = os.environ.get("BEAUTY_HF_FILENAME", "beauty_regressor.pt")
 BACKBONE = os.environ.get("BEAUTY_BACKBONE", "resnet50")
+# Must match training `--img-size` (224 for older checkpoints, 256 for newer Hyak recipe).
+BEAUTY_IMG_SIZE = int(os.environ.get("BEAUTY_IMG_SIZE", "256"))
 
 # Standard ImageNet stats — SCUT-FBP5500 fine-tunes from ImageNet-pretrained
 # backbones so we use the same normalisation at inference time.
@@ -104,9 +111,9 @@ class BeautyAnalyzer:
             self.model.load_state_dict(state, strict=True)
             self.model.to(self.device).eval()
 
-            # SCUT-FBP5500 standard inference transform: 224×224, ImageNet norm.
+            # Inference resize must match training `--img-size` (see BEAUTY_IMG_SIZE).
             self.transform = transforms.Compose([
-                transforms.Resize((224, 224)),
+                transforms.Resize((BEAUTY_IMG_SIZE, BEAUTY_IMG_SIZE)),
                 transforms.ToTensor(),
                 transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
             ])
