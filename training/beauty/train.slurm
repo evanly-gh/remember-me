@@ -23,13 +23,45 @@
 set -euo pipefail
 
 ACCOUNT="${ACCOUNT:-intelligentsystems}"
-REPO_ROOT="${REPO_ROOT:-$HOME/HCP}"
-DATA_ROOT="${DATA_ROOT:-$REPO_ROOT/data/SCUT-FBP5500}"
-OUT_CKPT="${OUT_CKPT:-$REPO_ROOT/training/beauty/checkpoints/beauty_regressor.pt}"
 ENV_PREFIX="${ENV_PREFIX:-/gscratch/${ACCOUNT}/${USER}/conda_envs/beauty-train}"
 
-cd "$REPO_ROOT/training/beauty"
+# Resolve paths from the directory where you ran `sbatch` (not $HOME/HCP).
+BEAUTY_DIR="${BEAUTY_DIR:-${SLURM_SUBMIT_DIR:-}}"
+if [[ -z "$BEAUTY_DIR" || ! -f "$BEAUTY_DIR/train.py" ]]; then
+  for candidate in \
+    "$HOME/remember-me/training/beauty" \
+    "$HOME/HCP/training/beauty"; do
+    if [[ -f "$candidate/train.py" ]]; then
+      BEAUTY_DIR="$candidate"
+      break
+    fi
+  done
+fi
+if [[ ! -f "${BEAUTY_DIR:-}/train.py" ]]; then
+  echo "ERROR: cannot find training/beauty (no train.py). Set BEAUTY_DIR or run sbatch from that folder."
+  exit 1
+fi
+
+REPO_ROOT="${REPO_ROOT:-$(cd "$BEAUTY_DIR/../.." && pwd)}"
+if [[ -z "${DATA_ROOT:-}" ]]; then
+  for candidate in \
+    "/gscratch/${ACCOUNT}/${USER}/data/SCUT-FBP5500" \
+    "$REPO_ROOT/data/SCUT-FBP5500"; do
+    if [[ -d "$candidate/Images" ]]; then
+      DATA_ROOT="$candidate"
+      break
+    fi
+  done
+  DATA_ROOT="${DATA_ROOT:-/gscratch/${ACCOUNT}/${USER}/data/SCUT-FBP5500}"
+fi
+OUT_CKPT="${OUT_CKPT:-$BEAUTY_DIR/checkpoints/beauty_regressor.pt}"
+
+cd "$BEAUTY_DIR"
 mkdir -p logs checkpoints
+
+echo "Beauty dir: $BEAUTY_DIR"
+echo "Repo root:  $REPO_ROOT"
+echo "Data root:  $DATA_ROOT"
 
 echo "=== SLURM job $SLURM_JOB_ID on $(hostname) ==="
 echo "Start: $(date)"
