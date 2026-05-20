@@ -4,3 +4,14 @@ model/celeba
 # Python cache / bytecode
 __pycache__/
 *.py[cod]
+
+# Trained model checkpoints. The beauty_regressor.pt is ~90 MB —
+# too big for the HF Space push without LFS. Host it in a separate
+# HF Hub model repo and set BEAUTY_HF_REPO_ID in the Space env;
+# BeautyAnalyzer will lazy-download on first request.
+face-service/models/*.pt
+face-service/models/*.safetensors
+face-service/models/*.bin
+face-service/models/*.onnx
+training/beauty/checkpoints/
+data/SCUT-FBP5500/
