@@ -18,6 +18,43 @@ import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import ChoppedScoreDisplay from '../components/ChoppedScoreDisplay';
+
+/**
+ * Format a date-ish DB field as YYYY-MM-DD.
+ *
+ * Supabase columns typed as `timestamptz` / `timestamp` come back as full
+ * ISO strings like "2026-05-20T00:00:00+00:00", which render as a long
+ * string with lots of zeros in plain Text components. Strip the time
+ * portion when the value parses as a date; otherwise return as-is so
+ * non-date strings pass through unchanged.
+ */
+function formatDate(value) {
+  if (!value || typeof value !== 'string') return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const d = new Date(value);
+  if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  return value;
+}
+
+/**
+ * Parse `facial_details` (jsonb column) into the inner `data` object.
+ *
+ * The face-service returns `{ success: true, data: {...} }` and we
+ * stash that as-is. Some Supabase clients hand it back as a string,
+ * others as an object — handle both.
+ */
+function parseFacialDetails(record) {
+  if (!record?.facial_details) return null;
+  try {
+    const details = typeof record.facial_details === 'string'
+      ? JSON.parse(record.facial_details)
+      : record.facial_details;
+    return details?.data || details;
+  } catch {
+    return null;
+  }
+}
 
 export default function EditProfileScreen({ route, navigation }) {
   const { profileName } = route.params;
@@ -27,7 +64,7 @@ export default function EditProfileScreen({ route, navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const { user } = useAuth();
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
 
   const [name, setName] = useState(profileName);
   const [phone, setPhone] = useState('');
@@ -84,7 +121,7 @@ export default function EditProfileScreen({ route, navigation }) {
         setTitle(mostRecent.title || '');
         setEvent(mostRecent.event || '');
         setLocation(mostRecent.location || '');
-        setDate(mostRecent.date || '');
+        setDate(formatDate(mostRecent.date));
         setNotes(mostRecent.notes || '');
       }
     } catch (error) {
@@ -249,7 +286,11 @@ export default function EditProfileScreen({ route, navigation }) {
     );
   }
 
-  const recentDates = records.slice(0, 3).map(r => r.date).filter(Boolean);
+  const recentDates = records.slice(0, 3).map(r => formatDate(r.date)).filter(Boolean);
+  // Parse once at the top of render so the flashy chopped-score card
+  // (placed under the hero) and the Facial Analysis block both read
+  // from the same source.
+  const facialData = parseFacialDetails(selectedPhoto);
   const recentLocations = records.slice(0, 3).map(r => r.location).filter(Boolean);
   const recentEvents = records.slice(0, 3).map(r => r.event).filter(Boolean);
 
@@ -291,6 +332,13 @@ export default function EditProfileScreen({ route, navigation }) {
             </Text>
           )}
         </View>
+
+        {/* Chopped score showcase — gated by Settings toggle. Sits
+            directly under the hero so it reads as part of the
+            profile's headline, not buried inside Facial Analysis. */}
+        {showChoppedScore && facialData?.chopped_score !== undefined && (
+          <ChoppedScoreDisplay score={facialData.chopped_score} isDark={isDark} />
+        )}
 
         {/* Photo gallery */}
         {records.length > 1 && (
@@ -498,6 +546,35 @@ export default function EditProfileScreen({ route, navigation }) {
 
                 return (
                   <>
+                    {/* ============ AESTHETICS (gated by Settings) ============ */}
+                    {/* The flashy ChoppedScoreDisplay lives up top
+                        under the hero. These rows are the technical
+                        breakdown for the curious. */}
+                    {showChoppedScore && d.chopped_score !== undefined && (
+                      <>
+                        <SectionLabel>Aesthetics — details</SectionLabel>
+                        {d.beauty_score !== null && d.beauty_score !== undefined && (
+                          <Row label="Learned Beauty Score" value={`${d.beauty_score} / 5.0`} method="BeautyRegressor" />
+                        )}
+                        {d.beauty_score_norm !== null && d.beauty_score_norm !== undefined && (
+                          <Row label="Learned Beauty (0–100)" value={`${d.beauty_score_norm.toFixed(1)}`} method="BeautyRegressor" />
+                        )}
+                        {d.beauty_model_source && (
+                          <Row label="Beauty Model Source" value={d.beauty_model_source} method="BeautyRegressor" />
+                        )}
+                        {d.chopped_breakdown && Object.keys(d.chopped_breakdown).length > 0 && (
+                          <Row
+                            label="Chopped Breakdown"
+                            value={Object.entries(d.chopped_breakdown)
+                              .filter(([k]) => !k.startsWith('_'))
+                              .map(([k, v]) => `${k}: ${v > 0 ? '+' : ''}${v}`)
+                              .join(', ')}
+                            method="AestheticAnalyzer"
+                          />
+                        )}
+                      </>
+                    )}
+                    
                     {/* ============ DEMOGRAPHICS ============ */}
                     <SectionLabel>Demographics</SectionLabel>
                     <Row label="Gender" value={d.gender} method="InsightFace" />
@@ -629,41 +706,6 @@ export default function EditProfileScreen({ route, navigation }) {
                     <Row label="Wearing Sunglasses" value={d.wearing_sunglasses} method="ObstructionViT" />
                     <Row label="Wearing Mask" value={d.wearing_mask} method="ObstructionViT" />
                     <Row label="Wearing Hat" value={d.hat_detected} method="SegFormer" />
-
-                    {/* ============ AESTHETICS (gated by Settings) ============ */}
-                    {showChoppedScore && (d.chopped_score !== undefined || d.beauty_score !== undefined) && (
-                      <>
-                        <SectionLabel>Aesthetics</SectionLabel>
-                        <Text style={{ color: colors.textTertiary, fontSize: 12, paddingHorizontal: 20, paddingBottom: 8, fontStyle: 'italic' }}>
-                          Subjective. Weights are guesses, not learned from human preferences. Treat as an in-joke metric.
-                        </Text>
-                        {d.chopped_score !== undefined && (
-                          <Row label="Chopped Score" value={`${d.chopped_score} / 100`} method="AestheticAnalyzer" />
-                        )}
-                        {d.chopped_score !== undefined && (
-                          <Row label="Attractiveness (inverse)" value={`${(100 - d.chopped_score).toFixed(1)} / 100`} method="AestheticAnalyzer" />
-                        )}
-                        {d.beauty_score !== null && d.beauty_score !== undefined && (
-                          <Row label="Learned Beauty Score" value={`${d.beauty_score} / 5.0`} method="BeautyRegressor" />
-                        )}
-                        {d.beauty_score_norm !== null && d.beauty_score_norm !== undefined && (
-                          <Row label="Learned Beauty (0–100)" value={`${d.beauty_score_norm.toFixed(1)}`} method="BeautyRegressor" />
-                        )}
-                        {d.beauty_model_source && (
-                          <Row label="Beauty Model Source" value={d.beauty_model_source} method="BeautyRegressor" />
-                        )}
-                        {d.chopped_breakdown && Object.keys(d.chopped_breakdown).length > 0 && (
-                          <Row
-                            label="Chopped Breakdown"
-                            value={Object.entries(d.chopped_breakdown)
-                              .filter(([k]) => !k.startsWith('_'))
-                              .map(([k, v]) => `${k}: ${v > 0 ? '+' : ''}${v}`)
-                              .join(', ')}
-                            method="AestheticAnalyzer"
-                          />
-                        )}
-                      </>
-                    )}
 
                     {/* ============ ANALYSIS MODELS LEGEND ============ */}
                     <SectionLabel>Analysis Method Details</SectionLabel>

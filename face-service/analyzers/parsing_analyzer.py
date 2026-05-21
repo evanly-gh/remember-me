@@ -167,23 +167,46 @@ class ParsingAnalyzer:
         result["hat_detected"] = region_coverage.get("hat", 0) > 0.01
 
         # ── Skin texture / wrinkles / freckles ───────────────────────
-        # Only worth computing if the face mask actually has substance.
-        # Under ~100 pixels we don't have enough signal.
-        if skin_mask.sum() > 100:
-            # Wrinkles → high-frequency edge energy on the face mask.
-            # Laplacian responds to local intensity curvature; std/mean
-            # over the masked region gives a "how much fine detail" score.
+        # IMPORTANT: SegFormer's "face" class covers the whole face
+        # region INCLUDING eyes, eyebrows, lips and nostrils. Those
+        # features are naturally darker than skin and have strong
+        # edges, which used to inflate every metric:
+        #
+        # • the Laplacian-on-mask wrinkle score was really measuring
+        #   eyebrow + eyelash edges, so almost every photo came back as
+        #   "prominent" wrinkles;
+        # • the LAB dark-spot freckle count was finding the eyebrows
+        #   and pupils as "spots", so almost every photo came back as
+        #   "many".
+        #
+        # Mitigation in this pass: erode the face mask substantially
+        # (≈8 px) so we sample only the deep interior — cheeks,
+        # forehead, chin — and bump the thresholds. Not perfect; a
+        # proper fix wires MediaPipe landmarks in to mask out
+        # eyes/brows/lips explicitly.
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+        interior_mask = cv2.erode(
+            skin_mask.astype(np.uint8), kernel, iterations=4
+        ).astype(bool)
+
+        if interior_mask.sum() > 100:
+            # Wrinkles → Laplacian edge density over the interior mask.
             skin_gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
             laplacian = cv2.Laplacian(skin_gray, cv2.CV_64F)
             skin_edges = np.abs(laplacian)
-            skin_edges[~skin_mask] = 0  # zero out non-face pixels
-            edge_density = skin_edges.sum() / skin_mask.sum() if skin_mask.sum() else 0
+            skin_edges[~interior_mask] = 0
+            edge_density = (
+                skin_edges.sum() / interior_mask.sum() if interior_mask.sum() else 0
+            )
 
-            if edge_density > 15:
+            # Thresholds rebumped for the interior-only mask: it
+            # naturally has much less edge energy than the un-eroded
+            # version, so the bands shifted down. Tune on real photos.
+            if edge_density > 22:
                 result["wrinkle_level"] = "prominent"
-            elif edge_density > 8:
+            elif edge_density > 14:
                 result["wrinkle_level"] = "moderate"
-            elif edge_density > 4:
+            elif edge_density > 8:
                 result["wrinkle_level"] = "slight"
             else:
                 result["wrinkle_level"] = "smooth"
@@ -193,23 +216,30 @@ class ParsingAnalyzer:
             # Freckles/moles → count pixels well below mean L* lightness.
             # Working in LAB rather than RGB makes the threshold tone-
             # independent (a freckle is "darker than surrounding skin"
-            # regardless of base skin tone).
+            # regardless of base skin tone). Restrict to interior_mask
+            # so eyes/brows/lips don't get counted as dark spots.
             skin_lab = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2LAB)
             l_channel = skin_lab[:, :, 0].astype(float)
-            l_channel[~skin_mask] = np.nan
+            l_channel[~interior_mask] = np.nan
             mean_l = np.nanmean(l_channel)
-            dark_spots = (l_channel < mean_l - 25) & skin_mask
-            spot_ratio = dark_spots.sum() / skin_mask.sum() if skin_mask.sum() else 0
+            # Stricter dark-spot threshold (was −25 L*). Real freckles
+            # and moles are typically 30+ L* below cheek brightness;
+            # smaller deltas were picking up shadows and pores.
+            dark_spots = (l_channel < mean_l - 32) & interior_mask
+            spot_ratio = (
+                dark_spots.sum() / interior_mask.sum() if interior_mask.sum() else 0
+            )
+            # Bands also tightened — "many" is genuinely lots of spots.
             result["freckles_or_moles"] = (
-                "many" if spot_ratio > 0.05
+                "many" if spot_ratio > 0.04
                 else "some" if spot_ratio > 0.015
                 else "few" if spot_ratio > 0.005
                 else "none"
             )
 
-            # Uniformity = std-dev of L* over the face. Higher = more
+            # Uniformity = std-dev of L* over the interior. Higher = more
             # variation (uneven skin tone, shadows, scarring).
-            skin_l_values = l_channel[skin_mask]
+            skin_l_values = l_channel[interior_mask]
             result["skin_uniformity"] = round(float(np.nanstd(skin_l_values)), 2)
         else:
             result["wrinkle_level"] = "unknown"

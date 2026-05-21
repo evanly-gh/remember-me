@@ -91,11 +91,22 @@ class BeautyAnalyzer:
 
         weights_path = self._resolve_weights_path()
         if weights_path is None:
+            local_status = (
+                f"found at {LOCAL_WEIGHTS_PATH}"
+                if os.path.exists(LOCAL_WEIGHTS_PATH)
+                else f"not found at {LOCAL_WEIGHTS_PATH}"
+            )
+            hub_status = (
+                f"BEAUTY_HF_REPO_ID={HF_REPO_ID} (download failed, see prior log line)"
+                if HF_REPO_ID
+                else "BEAUTY_HF_REPO_ID is unset"
+            )
             print(
-                "[BeautyAnalyzer] No trained weights found at "
-                f"{LOCAL_WEIGHTS_PATH} and BEAUTY_HF_REPO_ID is unset. "
+                "[BeautyAnalyzer] No usable weights — "
+                f"local: {local_status}; hub: {hub_status}. "
                 "Train one via `training/beauty/train.py` and drop the "
-                ".pt into face-service/models/, or set BEAUTY_HF_REPO_ID."
+                ".pt into face-service/models/, or set BEAUTY_HF_REPO_ID "
+                "to a public HF model repo containing the .pt."
             )
             return
 

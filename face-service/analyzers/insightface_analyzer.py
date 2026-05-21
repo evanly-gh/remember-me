@@ -57,6 +57,13 @@ except ImportError:
 
 MODEL_NAME = "buffalo_l"
 
+# InsightFace's genderage head is known to overshoot adult ages by
+# roughly 5 years in informal testing (no published calibration). We
+# subtract a fixed offset to undo this bias; clamp to ≥1 so we never
+# emit negative ages for kids. Override at runtime via the
+# AGE_OFFSET_YEARS env var if you want to tune for your dataset.
+AGE_OFFSET_YEARS = float(os.environ.get("AGE_OFFSET_YEARS", "5"))
+
 # Age buckets used by the legacy UI. We derive these from the regression
 # output so existing screens keep working.
 AGE_BUCKETS = [
@@ -121,8 +128,13 @@ class InsightFaceAnalyzer:
             else None
         )
 
-        # Age head is a single float (years). Round for display.
-        age = float(getattr(face, "age", 0.0))
+        # Age head is a single float (years). Buffalo_L systematically
+        # over-predicts adults by ~5 years; subtract AGE_OFFSET_YEARS
+        # to recalibrate. Don't drop below 1 (negative ages would be
+        # absurd, and very young children are already on the noisy
+        # end of the model's training distribution).
+        raw_age = float(getattr(face, "age", 0.0))
+        age = max(1.0, raw_age - AGE_OFFSET_YEARS)
 
         # Gender is exposed as 0 (female) / 1 (male) on Face objects.
         # InsightFace doesn't surface a softmax probability — we report
