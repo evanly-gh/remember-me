@@ -2,31 +2,39 @@
 HCP Face Analysis Microservice
 ==============================
 
-FastAPI service that runs nine specialized analyzers over a single photo
-and merges their outputs into one facial-attribute dictionary, including
-a face-recognition embedding for cross-photo grouping and a numeric
-"chopped score" aesthetic rating.
+FastAPI service that runs twelve specialised analyzers over a single
+photo and merges their outputs into one facial-attribute dictionary,
+including a face-recognition embedding for cross-photo grouping and a
+numeric "chopped score" aesthetic rating.
 
 Pipeline (in execution order)
 -----------------------------
 1.  InsightFaceAnalyzer        InsightFace buffalo_l (ONNX). SCRFD
                                detection + ArcFace 512-d embedding +
-                               age regression + gender + 106 landmarks.
-                               Replaces the previous three FairFace ViTs
-                               and adds face matching as a new capability.
+                               106 landmarks. Age & gender delegated
+                               to FairFace ViTs (steps 3a / 3b).
 
 2.  LandmarkAnalyzer           MediaPipe Face Landmarker. 478 3D
                                landmarks + 52 ARKit blendshapes →
                                geometric features, smiling, mouth_open.
 
-3.  EthnicityAnalyzer          cledoux42/Ethnicity_Test_v003 ViT.
+3a. AgeAnalyzer                FairFace ViT, softmax-weighted across 9
+                               age buckets. Replaces the InsightFace
+                               age regression which routinely missed
+                               by 30+ years on certain face types.
+
+3b. GenderAnalyzer             FairFace ViT (~93.4% acc). Replaces the
+                               InsightFace gender head so we get a real
+                               softmax confidence instead of argmax 1.0.
+
+3c. EthnicityAnalyzer          cledoux42/Ethnicity_Test_v003 ViT.
                                5-class ethnicity widened to a 7-bucket
                                schema for legacy compatibility.
 
-4.  ParsingAnalyzer            SegFormer-B5 human parsing. Now receives
-                               a face-cropped image (smaller, cleaner).
-                               Emits face/hair masks + hair length +
-                               hat detection + OpenCV-derived skin stats.
+4.  ParsingAnalyzer            SegFormer-B5 human parsing. Receives the
+                               face-cropped image. Emits face/hair
+                               masks + hair length + hat detection +
+                               OpenCV-derived skin stats.
 
 5.  EmotionAnalyzer            HSEmotion EfficientNet-B0. 8-class
                                emotion + valence/arousal/mood.
@@ -50,9 +58,10 @@ Pipeline (in execution order)
                                scoring only.
 
 10. AestheticAnalyzer          Pure-Python aggregator. Reads the merged
-                               dict from analyzers 1–9 and produces the
-                               final `chopped_score` (0–100, higher =
-                               more chopped) and a per-factor breakdown.
+                               dict from previous analyzers and produces
+                               the final `chopped_score` (0–100, higher
+                               = more chopped) and a per-factor
+                               breakdown.
 
 Endpoints
 ---------
@@ -89,6 +98,8 @@ from analyzers.color_analyzer import ColorAnalyzer
 from analyzers.obstruction_analyzer import ObstructionAnalyzer
 from analyzers.hair_type_analyzer import HairTypeAnalyzer
 from analyzers.insightface_analyzer import InsightFaceAnalyzer
+from analyzers.age_analyzer import AgeAnalyzer
+from analyzers.gender_analyzer import GenderAnalyzer
 from analyzers.beauty_analyzer import BeautyAnalyzer
 from analyzers.aesthetic_analyzer import AestheticAnalyzer
 
@@ -109,6 +120,8 @@ app.add_middleware(
 # model-load cost; subsequent requests are warm.
 insightface_analyzer: Optional[InsightFaceAnalyzer] = None
 landmark_analyzer: Optional[LandmarkAnalyzer] = None
+age_analyzer: Optional[AgeAnalyzer] = None
+gender_analyzer: Optional[GenderAnalyzer] = None
 ethnicity_analyzer: Optional[EthnicityAnalyzer] = None
 parsing_analyzer: Optional[ParsingAnalyzer] = None
 emotion_analyzer: Optional[EmotionAnalyzer] = None
@@ -148,7 +161,8 @@ def get_analyzers():
     requests. First request pays the full model-load cost; subsequent
     requests are warm.
     """
-    global insightface_analyzer, landmark_analyzer, ethnicity_analyzer
+    global insightface_analyzer, landmark_analyzer
+    global age_analyzer, gender_analyzer, ethnicity_analyzer
     global parsing_analyzer, emotion_analyzer, color_analyzer
     global obstruction_analyzer, hair_type_analyzer
     global beauty_analyzer, aesthetic_analyzer
@@ -160,6 +174,14 @@ def get_analyzers():
     if landmark_analyzer is None:
         logger.info("Loading MediaPipe Face Landmarker...")
         landmark_analyzer = LandmarkAnalyzer()
+
+    if age_analyzer is None:
+        logger.info("Loading FairFace age analyzer...")
+        age_analyzer = AgeAnalyzer()
+
+    if gender_analyzer is None:
+        logger.info("Loading FairFace gender analyzer...")
+        gender_analyzer = GenderAnalyzer()
 
     if ethnicity_analyzer is None:
         logger.info("Loading Ethnicity classifier...")
@@ -194,6 +216,8 @@ def get_analyzers():
     return (
         insightface_analyzer,
         landmark_analyzer,
+        age_analyzer,
+        gender_analyzer,
         ethnicity_analyzer,
         parsing_analyzer,
         emotion_analyzer,
@@ -246,6 +270,8 @@ def _run_pipeline(img_array: np.ndarray) -> dict:
     (
         insight,
         landmarks,
+        ages,
+        genders,
         ethnicities,
         parsing,
         emotions,
@@ -258,7 +284,10 @@ def _run_pipeline(img_array: np.ndarray) -> dict:
 
     results: dict = {}
 
-    # Step 1: InsightFace detection + age + gender + recognition embedding.
+    # Step 1: InsightFace — detection + ArcFace 512-d recognition
+    # embedding + 106 landmarks. Age and gender both delegated to
+    # FairFace ViTs in step 3 because the bundled genderage head was
+    # too inaccurate (called 20-yr-olds "52" in real photos).
     logger.info("Running InsightFace analysis...")
     insight_results = insight.analyze(img_array)
     results.update(insight_results)
@@ -275,7 +304,19 @@ def _run_pipeline(img_array: np.ndarray) -> dict:
     landmark_results = landmarks.analyze(img_array)
     results.update(landmark_results)
 
-    # Step 3: ethnicity classifier — likes a tighter face crop.
+    # Step 3a: FairFace age. Softmax-weighted estimate across 9
+    # buckets — slides between bucket midpoints when the model is
+    # uncertain instead of snapping. Much more reliable than
+    # InsightFace's regression head on younger faces.
+    logger.info("Running FairFace age analysis...")
+    results.update(ages.analyze(face_crop))
+
+    # Step 3b: FairFace gender. Provides a real softmax confidence
+    # score so the UI can show graded uncertainty.
+    logger.info("Running FairFace gender analysis...")
+    results.update(genders.analyze(face_crop))
+
+    # Step 3c: ethnicity classifier — likes a tighter face crop.
     logger.info("Running ethnicity analysis...")
     results.update(ethnicities.analyze(face_crop))
 

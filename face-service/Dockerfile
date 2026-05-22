@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 # System deps for OpenCV and MediaPipe
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 wget unzip \
+    libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 wget unzip git \
     libegl1 libgles2 libgomp1 \
     g++ && \
     rm -rf /var/lib/apt/lists/*
@@ -12,6 +12,11 @@ WORKDIR /app
 # Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# MiVOLO was tried for age regression but its codepath imports
+# functions removed from modern timm (remap_checkpoint). Reverted to
+# InsightFace's bundled genderage head with piecewise calibration —
+# see _calibrate_age in analyzers/insightface_analyzer.py.
 
 # Pre-download MediaPipe model at build time so first request is fast.
 # Hugging Face models (Ethnicity ViT, SegFormer, HSEmotion, ObstructionViT,
@@ -23,15 +28,21 @@ RUN mkdir -p models && \
     "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task"
 
 # Pre-download InsightFace buffalo_l bundle (detection + recognition +
-# age + gender + landmarks) so the first /analyze call doesn't pay the
-# ~280MB download. The bundle auto-extracts under ~/.insightface/models/
-# on first use.
+# 106 landmarks) so the first /analyze call doesn't pay the ~280MB
+# download. The bundle auto-extracts under ~/.insightface/models/ on
+# first use.
 RUN mkdir -p /root/.insightface/models && \
     wget -q -O /root/.insightface/models/buffalo_l.zip \
     "https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip" && \
     cd /root/.insightface/models && unzip -q buffalo_l.zip -d buffalo_l && rm buffalo_l.zip
 
-# unzip wasn't in the system deps; add it via the apt block at the top.
+# MiVOLO checkpoint is too large for the Docker image (~300 MB) — it's
+# lazy-downloaded from HF Hub on first AgeAnalyzer init, via
+# AGE_HF_REPO_ID (defaults to iitolstykh/mivolo_d1). To bundle it at
+# build time instead, uncomment the lines below and pin the filename.
+# RUN mkdir -p models && \
+#     wget -q -O models/mivolo_d1.pth.tar \
+#     "https://huggingface.co/iitolstykh/mivolo_d1/resolve/main/mivolo_d1.pth.tar"
 
 COPY . .
 

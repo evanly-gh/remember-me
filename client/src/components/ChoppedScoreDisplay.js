@@ -26,12 +26,13 @@ import {
 
 // ── Tier definitions ──────────────────────────────────────────────
 // Ranges are contiguous: a score lands in the first tier whose
-// `max` it falls below.  Gigachad covers <20 because the user's
-// original spec left 10–20 ambiguous; folding it into Gigachad is
-// the kindest read.
+// `max` it falls below.
+//
+// Threshold spec (user-defined): Gigachad <15, Megachopped 90+. The
+// in-between cutoffs (35, 65, 80) keep the spectrum's familiar shape.
 const TIERS = [
   {
-    max: 20,
+    max: 15,
     label: 'Gigachad',
     emoji: '🗿',
     color: '#00C853',   // vivid neon green
@@ -42,6 +43,16 @@ const TIERS = [
       'The genetic lottery winner.',
       'Built like the Greeks intended.',
       'Approach with caution: aura levels critical.',
+      'Mount Olympus called — they want their face back.',
+      'Mirrors file restraining orders against you.',
+      'Photo evidence of divine intervention.',
+      'Top 0.1% of the gene pool. The other 99.9% are coping.',
+      'Discovered. Cast in a Renaissance painting. Already.',
+      'Cameras gain weight just looking at you.',
+      'NPCs malfunction in your presence.',
+      'Genome certified by the Louvre.',
+      'Babies stop crying. Stocks go up.',
+      'Statistically: a problem for everyone else.',
     ],
   },
   {
@@ -56,6 +67,16 @@ const TIERS = [
       'Pretty privilege detected.',
       'Naturally photogenic.',
       'The mirror is friendly today.',
+      'You\'d still get carded at 35.',
+      'A solid 8. Yes, out of 10.',
+      'Even your candid photos pop.',
+      'The vibes are immaculate.',
+      'Whoever raised you, well done.',
+      'Free drink at any decent bar.',
+      'Genuinely a head-turner.',
+      'Algorithm-friendly bone structure.',
+      'Naturally gorgeous and probably annoyingly humble about it.',
+      'Casually wrecking everyone\'s self-esteem.',
     ],
   },
   {
@@ -70,6 +91,16 @@ const TIERS = [
       'The median has entered the chat.',
       'Statistically unremarkable.',
       'Vibes: distinctly room-temperature.',
+      'A face for every situation. None in particular.',
+      'Reliable, like a Toyota.',
+      'Wouldn\'t recognise you in a lineup. No offence.',
+      'Cast as "guy in coffee shop" in the movie of your life.',
+      'Genetically unspectacular. Also unproblematic.',
+      'Beige. But, like, a respectable beige.',
+      'A perfectly fine human face.',
+      'Forgettable in the friendliest way.',
+      'The thumbnail version of a person.',
+      'You\'re fine. Truly. Mid is a noble state.',
     ],
   },
   {
@@ -84,10 +115,20 @@ const TIERS = [
       'Skincare? Have you tried it?',
       'Could be worse. Could also be much better.',
       'The lighting is conspiring against you.',
+      'A haircut could change your life.',
+      'Solid retake material.',
+      'Camera caught you in a moment. Possibly your worst one.',
+      'Have you considered… not that?',
+      'The model is being polite.',
+      'Glow-up arc available, terms apply.',
+      'Salvageable, with effort.',
+      'Suspiciously close to chopped. Suspicious how close.',
+      'Was the camera on the floor?',
+      'A face only a mother could love. Allegedly.',
     ],
   },
   {
-    max: 95,
+    max: 90,
     label: 'Chopped',
     emoji: '🪓',
     color: '#E53935',   // bright red
@@ -98,10 +139,20 @@ const TIERS = [
       'Have you tried smiling?',
       'Tough scene.',
       'Lock in, king/queen.',
+      'The chopping board has been notified.',
+      'Genuinely rough out here.',
+      'Have you considered being someone else?',
+      'Filters were invented for this exact reason.',
+      'The committee has reviewed and is not impressed.',
+      'A face only the algorithm could love. Barely.',
+      'Skincare aisle — entire one, please.',
+      'Statistically, things go up from here. Statistically.',
+      'You should sue the camera.',
+      'Imagine being seen.',
     ],
   },
   {
-    max: 101,                 // catches 95–100 inclusive
+    max: 101,                 // catches 90–100 inclusive
     label: 'Megachopped',
     emoji: '💀',
     color: '#FF1744',   // deep alarming red
@@ -112,6 +163,17 @@ const TIERS = [
       'Maybe try a filter.',
       'The model wept.',
       'New PR (personal regression).',
+      'A federal disaster has been declared.',
+      'The neural network has filed a complaint.',
+      'Off the charts. Wrong way.',
+      'Sealed for safety. Yours.',
+      'There are reflections in spoons that envy you. Briefly.',
+      'Cease. Desist. Maybe try a mask.',
+      'Even the chopping board is concerned.',
+      'You broke the regression model. Take a bow.',
+      'Beyond chopped. Diced. Possibly julienned.',
+      'The mirror has unionised against you.',
+      'A historic moment. For the wrong reasons.',
     ],
   },
 ];

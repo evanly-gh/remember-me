@@ -577,11 +577,14 @@ export default function EditProfileScreen({ route, navigation }) {
                     
                     {/* ============ DEMOGRAPHICS ============ */}
                     <SectionLabel>Demographics</SectionLabel>
-                    <Row label="Gender" value={d.gender} method="InsightFace" />
+                    <Row label="Gender" value={d.gender} method="FairFace" />
+                    {d.gender_confidence !== undefined && d.gender_confidence > 0 && (
+                      <Row label="Gender Confidence" value={`${(d.gender_confidence * 100).toFixed(1)}%`} method="FairFace" />
+                    )}
                     <Row label="Age Estimate" value={d.age_estimate ? `${d.age_estimate} yrs` : null} method="InsightFace" />
                     <Row label="Age Range" value={d.age_range} method="InsightFace" />
-                    {d.age_distribution && Object.keys(d.age_distribution).length > 0 && (
-                      <Row label="Age Distribution" value={Object.entries(d.age_distribution).map(([k, v]) => `${k}: ${(v * 100).toFixed(1)}%`).join(', ')} method="InsightFace" />
+                    {d.age_raw !== undefined && d.age_raw > 0 && d.age_raw !== d.age_estimate && (
+                      <Row label="Age Raw (uncalibrated)" value={`${d.age_raw} yrs`} method="InsightFace" />
                     )}
                     <Row label="Ethnicity" value={d.ethnicity} method="Ethnicity_Test_v003" />
                     <Row label="Ethnicity Confidence" value={d.ethnicity_confidence && `${(d.ethnicity_confidence * 100).toFixed(1)}%`} method="Ethnicity_Test_v003" />
@@ -695,7 +698,6 @@ export default function EditProfileScreen({ route, navigation }) {
                     <Row label="Wrinkle Level" value={d.wrinkle_level} method="SegFormer+OpenCV" />
                     <Row label="Skin Texture Score" value={d.skin_texture_score && `${d.skin_texture_score.toFixed(2)}`} method="SegFormer+OpenCV" />
                     <Row label="Skin Uniformity" value={d.skin_uniformity && `${d.skin_uniformity.toFixed(2)}`} method="SegFormer+OpenCV" />
-                    <Row label="Freckles or Moles" value={d.freckles_or_moles} method="SegFormer+OpenCV" />
                     {d.skin_tone?.hex_color && (
                       <Row label="Skin Hex Color" value={d.skin_tone.hex_color} method="ColorAnalyzer" />
                     )}
@@ -709,7 +711,8 @@ export default function EditProfileScreen({ route, navigation }) {
 
                     {/* ============ ANALYSIS MODELS LEGEND ============ */}
                     <SectionLabel>Analysis Method Details</SectionLabel>
-                    <Row label="InsightFace" value="buffalo_l ONNX bundle: SCRFD detection + ArcFace 512-d recognition + age + gender + 106 landmarks (99.83% LFW)" />
+                    <Row label="InsightFace" value="buffalo_l ONNX bundle: SCRFD detection + ArcFace 512-d recognition + 106 landmarks (99.83% LFW) + age regression with piecewise calibration to undo the young-face overshoot." />
+                    <Row label="FairFace" value="dima806/fairface_gender_image_detection ViT (~93.4% accuracy). Exposes a real softmax confidence for gender." />
                     <Row label="MediaPipe" value="478 3D landmarks + 52 ARKit blendshapes (Google)" />
                     <Row label="Ethnicity_Test_v003" value="cledoux42 5-class ethnicity ViT (79.6% accuracy)" />
                     <Row label="SegFormer" value="matei-dorian/segformer-b5-finetuned-human-parsing (mIoU 0.626, face IoU 0.829)" />

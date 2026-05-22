@@ -136,15 +136,21 @@ class BeautyAnalyzer:
             print(f"[BeautyAnalyzer] Failed to load beauty model: {exc}")
             self.model = None
 
-    @staticmethod
-    def _resolve_weights_path() -> str | None:
-        """Local file wins, HF Hub is the fallback."""
+    def _resolve_weights_path(self) -> str | None:
+        """Local file wins, HF Hub is the fallback.
+
+        Also records `self.source` ("local" or "huggingface") so the
+        analyze() result can report where the weights came from.
+        """
         if os.path.exists(LOCAL_WEIGHTS_PATH):
+            self.source = "local"
             return LOCAL_WEIGHTS_PATH
         if HF_REPO_ID:
             try:
                 from huggingface_hub import hf_hub_download
-                return hf_hub_download(repo_id=HF_REPO_ID, filename=HF_FILENAME)
+                path = hf_hub_download(repo_id=HF_REPO_ID, filename=HF_FILENAME)
+                self.source = "huggingface"
+                return path
             except Exception as exc:
                 print(f"[BeautyAnalyzer] HF Hub download failed: {exc}")
         return None

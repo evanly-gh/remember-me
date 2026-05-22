@@ -216,9 +216,8 @@ export function buildSearchableText(contactData) {
     if (facial.wrinkle_level && facial.wrinkle_level !== 'unknown') {
       skinDetails.push(`${facial.wrinkle_level} wrinkles`);
     }
-    if (facial.freckles_or_moles && facial.freckles_or_moles !== 'unknown') {
-      skinDetails.push(`${facial.freckles_or_moles} freckles/moles`);
-    }
+    // Freckles/moles dropped — the underlying detector was too noisy
+    // (shadows + pores were counted as spots) to feed into search.
     if (skinDetails.length > 0) parts.push(`Skin: ${skinDetails.join(', ')}`);
 
     // Misc heuristics still worth indexing.

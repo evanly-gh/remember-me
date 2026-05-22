@@ -12,7 +12,8 @@ Photo (RGB ndarray)
   │
   ├─► [1] InsightFaceAnalyzer  (insightface buffalo_l, ONNX)
   │       → face_bbox, face_confidence, face_embedding (512-d ArcFace),
-  │         age_estimate, age_range, gender + confidences
+  │         age_estimate (piecewise-calibrated). Gender comes from
+  │         FairFace (step 3a) for a real softmax confidence.
   │
   ├─► Build face crop from face_bbox + padding. Downstream analyzers
   │   that benefit from a tighter input read the crop; MediaPipe gets
@@ -24,7 +25,12 @@ Photo (RGB ndarray)
   │       facial_asymmetry_score, smile_asymmetry, possible_dimples,
   │       possible_unibrow.
   │
-  ├─► [3] EthnicityAnalyzer  (cledoux42/Ethnicity_Test_v003 ViT)
+  ├─► [3a] GenderAnalyzer  (dima806/fairface_gender ViT)
+  │       → gender, gender_confidence, gender_distribution
+  │       (cropped input). Replaces the InsightFace gender head so
+  │       we get a real softmax confidence.
+  │
+  ├─► [3b] EthnicityAnalyzer  (cledoux42/Ethnicity_Test_v003 ViT)
   │       → ethnicity, ethnicity_confidence, ethnicity_distribution
   │       (cropped input).
   │
@@ -72,8 +78,9 @@ strips them before returning JSON.
 
 | Section | Field(s) | Source |
 |---|---|---|
-| Demographics | face_bbox, face_confidence, face_embedding (512-d), age_estimate, age_range, age_confidence, gender, gender_confidence | InsightFace buffalo_l |
-| Demographics | ethnicity, ethnicity_confidence, ethnicity_distribution | EthnicityAnalyzer (cledoux42 ViT) |
+| Demographics | face_bbox, face_confidence, face_embedding (512-d), age_estimate (piecewise-calibrated), age_range | InsightFace buffalo_l |
+| Demographics | gender, gender_confidence, gender_distribution | FairFace ViT |
+| Demographics | ethnicity, ethnicity_confidence, ethnicity_distribution | cledoux42 ViT |
 | Emotion | primary/secondary emotion, emotion_scores, valence, arousal, mood | HSEmotion EffNet-B0 |
 | Face Structure | face_shape (+ 4 ratios), jawline_type/angle, chin_type, cheekbone_prominence, cheek_fullness, forehead_width, facial_asymmetry_score | MediaPipe Face Landmarker |
 | Hair | hair_length, hair_present | SegFormer-B5 |
@@ -86,7 +93,7 @@ strips them before returning JSON.
 | Lips & Mouth | lip_fullness, lip_balance, mouth_width, cupids_bow, smile_asymmetry, possible_dimples, smiling, mouth_open | MediaPipe (last two via blendshapes) |
 | Lips & Mouth | lip_color (shade + hex) | ColorAnalyzer (mask from MediaPipe) |
 | Skin | skin_tone (Fitzpatrick, L*/a*/b*, hex), skin_undertone | ColorAnalyzer |
-| Skin | wrinkle_level, skin_texture_score, skin_uniformity, freckles_or_moles | SegFormer mask + OpenCV stats |
+| Skin | wrinkle_level, skin_texture_score, skin_uniformity | SegFormer mask + OpenCV stats (`freckles_or_moles` still computed server-side but no longer displayed — detector was too noisy) |
 | Accessories | wearing_glasses, wearing_sunglasses, wearing_mask | ObstructionViT (dima806) |
 | Accessories | wearing_hat | SegFormer (hat class coverage) |
 | Aesthetics | beauty_score (1–5), beauty_score_norm (0–100) | BeautyAnalyzer (SCUT-FBP5500 ResNet-50) |

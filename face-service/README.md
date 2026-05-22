@@ -18,9 +18,10 @@ face-recognition embedding and an aesthetic "chopped score."
 
 | # | Component | Model | Task | Size |
 |---|-----------|-------|------|------|
-| 1 | InsightFace | `buffalo_l` (SCRFD + ArcFace ResNet50, ONNX) | Detection + 512-d recognition embedding + age + gender + 106 landmarks (99.83% LFW) | ~280 MB |
+| 1 | InsightFace | `buffalo_l` (SCRFD + ArcFace ResNet50, ONNX) | Detection + 512-d recognition embedding + 106 landmarks (99.83% LFW) + piecewise-calibrated age | ~280 MB |
 | 2 | MediaPipe Face Landmarker | `face_landmarker.task` (Google) | 478 3D landmarks + 52 ARKit blendshapes — geometric features, smiling, mouth-open | ~4 MB |
-| 3 | Ethnicity | `cledoux42/Ethnicity_Test_v003` (ViT) | 5-class ethnicity (~79.6% acc) | ~340 MB |
+| 3a | Gender | `dima806/fairface_gender_image_detection` (ViT) | Binary gender + softmax confidence (~93.4% acc) | ~340 MB |
+| 3b | Ethnicity | `cledoux42/Ethnicity_Test_v003` (ViT) | 5-class ethnicity (~79.6% acc) | ~340 MB |
 | 4 | Human parsing | `matei-dorian/segformer-b5-finetuned-human-parsing` | 18-class pixel segmentation → masks + hair length + hat | ~340 MB |
 | 5 | Emotion | HSEmotion `enet_b0_8_best_afew` (EfficientNet-B0) | 8-class emotion + valence/arousal | ~20 MB |
 | 6 | Color analysis | (no model — OpenCV LAB/HSV) | Skin tone, hair color, eye color, lip color | 0 MB |

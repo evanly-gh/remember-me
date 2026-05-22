@@ -15,6 +15,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
@@ -45,6 +47,12 @@ export default function RecordScreen({ navigation }) {
   const [cameraFacing, setCameraFacing] = useState('back');
   const [expandedChip, setExpandedChip] = useState(null);
   const [photoBase64, setPhotoBase64] = useState(null);
+  // Discrete zoom level (UI multiplier). The expo-camera `zoom` prop
+  // takes a normalised 0-1 value, not a literal multiplier — we map
+  // these UI pills to (0, 0.25, 0.5, 0.75) so 1×/2×/3×/5× feel
+  // roughly proportional. Devices vary in their max optical zoom so
+  // the upper end is an approximation, not a calibrated zoom factor.
+  const [zoomLevel, setZoomLevel] = useState(1);
   const cameraRef = useRef(null);
   const chipInputRef = useRef(null);
   const { user } = useAuth();
@@ -101,7 +109,13 @@ export default function RecordScreen({ navigation }) {
     }
   };
 
-  const handlePhotoPress = async () => {
+  // Tapping the photo placeholder goes straight to the camera.
+  // The "choose from library" path lives on a small paperclip button
+  // next to the photo circle instead of in a popup, so it's one tap
+  // not two.
+  const handlePhotoPress = () => openCamera();
+
+  const openCamera = async () => {
     if (!permission?.granted) {
       const result = await requestPermission();
       if (!result.granted) {
@@ -109,7 +123,50 @@ export default function RecordScreen({ navigation }) {
         return;
       }
     }
+    setZoomLevel(1);   // reset zoom each time the camera opens
     setShowCamera(true);
+  };
+
+  const pickFromLibrary = async () => {
+    try {
+      // Recent expo-image-picker versions deprecated `MediaTypeOptions`
+      // in favour of an array-of-strings shorthand. Use the new shape
+      // and fall back to the old one for older SDKs.
+      const mediaTypes = ImagePicker.MediaType
+        ? ['images']
+        : ImagePicker.MediaTypeOptions?.Images;
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes,
+        base64: true,
+        quality: 0.8,
+        allowsEditing: false,
+      });
+
+      if (result.canceled || !result.assets?.length) return;
+
+      const asset = result.assets[0];
+      let base64 = asset.base64;
+
+      // Some platforms return assets without base64 even when
+      // requested (notably Android URIs that point at content://).
+      // Fall back to reading the file ourselves.
+      if (!base64 && asset.uri) {
+        try {
+          base64 = await FileSystem.readAsStringAsync(asset.uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+        } catch (readError) {
+          console.warn('Failed to read base64 from picked image:', readError.message);
+        }
+      }
+
+      setCapturedPhoto(asset.uri);
+      setPhotoBase64(base64 || null);
+    } catch (error) {
+      console.error('Image picker failed:', error);
+      Alert.alert('Error', 'Could not load that photo. Try a different one.');
+    }
   };
 
   const takePicture = async () => {
@@ -120,6 +177,17 @@ export default function RecordScreen({ navigation }) {
       setShowCamera(false);
     }
   };
+
+  // Discrete zoom levels users can pick from. The internal expo-camera
+  // `zoom` prop is 0..1; we map the UI pills to a non-linear scale so
+  // each step actually looks different on-device. (1× = no zoom.)
+  const ZOOM_LEVELS = [
+    { label: '1×', value: 0.0 },
+    { label: '2×', value: 0.25 },
+    { label: '3×', value: 0.5 },
+    { label: '5×', value: 0.75 },
+  ];
+  const currentZoom = ZOOM_LEVELS.find((z) => z.label === `${zoomLevel}×`)?.value ?? 0;
 
   const handleSave = async () => {
     if (!user) {
@@ -302,7 +370,12 @@ export default function RecordScreen({ navigation }) {
   if (showCamera) {
     return (
       <View style={styles.cameraContainer}>
-        <CameraView style={StyleSheet.absoluteFill} facing={cameraFacing} ref={cameraRef} />
+        <CameraView
+          style={StyleSheet.absoluteFill}
+          facing={cameraFacing}
+          zoom={currentZoom}
+          ref={cameraRef}
+        />
         <SafeAreaView style={styles.cameraOverlay} pointerEvents="box-none">
           <View style={styles.cameraTopRow}>
             <TouchableOpacity
@@ -318,7 +391,37 @@ export default function RecordScreen({ navigation }) {
               <Ionicons name="camera-reverse-outline" size={26} color="#fff" />
             </TouchableOpacity>
           </View>
+
+          {/* Bottom controls cluster: zoom pills directly above the
+              shutter so the user's thumb is already in the right zone
+              when they switch between zooming and tapping. */}
           <View style={styles.cameraBottom}>
+            <View style={styles.zoomPillRow}>
+              {ZOOM_LEVELS.map((z) => {
+                const label = z.label;
+                const numericLabel = parseInt(label, 10);
+                const active = zoomLevel === numericLabel;
+                return (
+                  <TouchableOpacity
+                    key={label}
+                    onPress={() => setZoomLevel(numericLabel)}
+                    style={[
+                      styles.zoomPill,
+                      active && styles.zoomPillActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.zoomPillText,
+                        active && styles.zoomPillTextActive,
+                      ]}
+                    >
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
             <TouchableOpacity style={styles.shutterButton} onPress={takePicture}>
               <View style={styles.shutterButtonInner} />
             </TouchableOpacity>
@@ -343,7 +446,10 @@ export default function RecordScreen({ navigation }) {
         >
           <Text style={[styles.screenTitle, { color: colors.text }]}>New Contact</Text>
 
-          {/* Photo placeholder */}
+          {/* Photo placeholder + secondary "attach from library" button.
+              The photo circle is the primary action (opens camera). The
+              paperclip on the right is the secondary path for users who
+              want to use an existing photo. */}
           <View style={styles.photoSection}>
             <TouchableOpacity
               style={[styles.photoPlaceholder, { backgroundColor: colors.accentLight }]}
@@ -363,6 +469,14 @@ export default function RecordScreen({ navigation }) {
               ) : (
                 <Ionicons name="camera" size={36} color={colors.accent} />
               )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.attachButton, { backgroundColor: colors.accentLight }]}
+              onPress={pickFromLibrary}
+              activeOpacity={0.7}
+              accessibilityLabel="Attach photo from library"
+            >
+              <Ionicons name="attach" size={24} color={colors.accent} />
             </TouchableOpacity>
           </View>
 
@@ -506,8 +620,11 @@ const styles = StyleSheet.create({
 
   // Photo
   photoSection: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     paddingBottom: 30,
+    gap: 12,
   },
   photoPlaceholder: {
     width: 160,
@@ -516,6 +633,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
+  },
+  attachButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   photoImage: {
     width: 160,
@@ -655,6 +779,33 @@ const styles = StyleSheet.create({
   cameraBottom: {
     alignItems: 'center',
     paddingBottom: 40,
+  },
+  zoomPillRow: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    borderRadius: 24,
+    padding: 4,
+    marginBottom: 18,
+    alignSelf: 'center',
+  },
+  zoomPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    minWidth: 44,
+    alignItems: 'center',
+  },
+  zoomPillActive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+  },
+  zoomPillText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+  },
+  zoomPillTextActive: {
+    color: '#000',
   },
   shutterButton: {
     width: 70,
