@@ -128,7 +128,18 @@ All face-service models are pre-trained/off-the-shelf, chosen for documented acc
 - **Hair-type ViT** (`dima806`): ~93% overall accuracy.
 - **Search embeddings:** `all-MiniLM-L6-v2` (distilled BERT, 22M params, 384-d output).
 
-**Design note on custom training.** An earlier version of the pipeline used a zero-shot CLIP/FaRL analyzer for ~30 binary attributes (including a coarse "attractiveness" score); it was removed because zero-shot accuracy on fine-grained facial attributes was poor and its hallucinations were polluting search embeddings. A detailed plan to *replace* it with a self-trained ResNet-50 / ViT multi-label classifier (data collection via CelebA, BCE loss, frozen backbone + fine-tuned head, target >95% per-attribute) is documented in [`CUSTOM_ATTRIBUTE_MODEL_PLAN.md`](CUSTOM_ATTRIBUTE_MODEL_PLAN.md). That custom model is a roadmap item and is **not** part of the current runtime — the shipping pipeline is the seven analyzers above.
+### Self-trained beauty regressor (SCUT-FBP5500)
+
+Separate from the seven off-the-shelf analyzers, the author trained and published a custom facial-beauty model to Hugging Face: **[`evanlyhf/scut-fbp5500-beauty`](https://huggingface.co/evanlyhf/scut-fbp5500-beauty)**.
+
+- **Architecture:** a single-output regression head on top of a **timm ResNet-50** backbone, fine-tuned end-to-end.
+- **Dataset:** [SCUT-FBP5500](https://github.com/HCIILAB/SCUT-FBP5500-Database-Release) — 5,500 frontal face images, each labelled with a facial-beauty score averaged from 60 human raters on a 1–5 scale (the standard benchmark for facial-beauty prediction).
+- **Predicts:** a continuous beauty score, a `float` in `[1.0, 5.0]`, where higher = more conventionally attractive per the dataset's averaged human ratings.
+- **Artifact:** the trained weights are published as `beauty_regressor.pt` (≈94 MB) in the model repo. The model card does not publish evaluation metrics (no MAE/correlation is reported on the card), and no training notebook is linked from the repo.
+
+**Integration status: trained and published to Hugging Face, but not yet wired into the running app.** The current shipping pipeline is the seven analyzers above; the face-service exposes no beauty analyzer, and no client/server code calls the SCUT model or its HF endpoint. Consuming the beauty score (e.g. as an eighth analyzer in `face-service/`, or via the HF Inference API) is a planned next step, not a live feature.
+
+**Design note on the earlier "attractiveness" attribute.** An earlier version of the pipeline used a zero-shot CLIP/FaRL analyzer for ~30 binary attributes (including a coarse binary "attractive" flag); it was removed because zero-shot accuracy on fine-grained facial attributes was poor and its hallucinations were polluting search embeddings. A separate plan to replace those ~30 CLIP flags with a self-trained ResNet-50 / ViT **multi-label** classifier (data collection via CelebA, BCE loss, frozen backbone + fine-tuned head, target >95% per-attribute) is documented in [`CUSTOM_ATTRIBUTE_MODEL_PLAN.md`](CUSTOM_ATTRIBUTE_MODEL_PLAN.md); that multi-label classifier is distinct from the SCUT-FBP5500 regressor above and remains a roadmap item.
 
 ---
 
